@@ -16,12 +16,7 @@ A comprehensive PowerShell logging module with automatic log rotation, compressi
 
 ## Installation
 
-### Method 1: Install from PowerShell Gallery (when published)
-```powershell
-Install-Module -Name PSLogger
-```
-
-### Method 2: Manual Installation
+### Manual Installation
 1. Download the module files
 2. Copy to your PowerShell modules directory:
    ```powershell
@@ -311,4 +306,5 @@ Contributions are welcome! Please submit issues and pull requests on the project
 - Log rotation and compression
 - Multiple logger support
 - Console output options
+
 - Convenience functions for each log level
