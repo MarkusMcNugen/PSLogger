@@ -984,6 +984,15 @@ Function Initialize-Log {
         Default: "[]"
         Aliases: LB, Brackets
 
+    .PARAMETER Force
+        Forces overwriting of an existing default logger. Without this parameter, attempting
+        to initialize a new default logger when one already exists will result in an error.
+        This prevents accidental overwriting of logger configurations in complex scripts.
+        
+        When Force is used, a warning is displayed showing which logger is being replaced.
+        This parameter only applies when using the -Default switch.
+        Aliases: F
+
     .OUTPUTS
         [Logger]
         Returns an initialized Logger class instance unless -Default is specified.
@@ -1117,6 +1126,33 @@ Function Initialize-Log {
         Write-Log "Query executed" -Logger $DbLog
         # Output: [2025-08-15 16:13:06][INFO][DataAccess] Query executed
     
+    .EXAMPLE
+        # Attempting to overwrite default logger without Force
+        Initialize-Log -Default -LogName "First"
+        Write-Log "Using first logger"
+        
+        # This will fail with an error
+        Initialize-Log -Default -LogName "Second"
+        # ERROR: A default logger has already been initialized. Use -Force parameter to overwrite...
+        
+        # This will succeed with a warning
+        Initialize-Log -Default -LogName "Second" -Force
+        # WARNING: Overwriting existing default logger 'First' with new logger 'Second'
+        
+        Write-Log "Now using second logger"
+    
+    .EXAMPLE
+        # Safe logger replacement pattern
+        if ($Script:DefaultLog) {
+            Write-Host "Default logger exists: $($Script:DefaultLog.LogName)"
+            $response = Read-Host "Overwrite existing logger? (Y/N)"
+            if ($response -eq 'Y') {
+                Initialize-Log -Default -LogName "NewLogger" -Force
+            }
+        } else {
+            Initialize-Log -Default -LogName "NewLogger"
+        }
+    
     .NOTES
         - The function creates log directories automatically if they don't exist
         - Only one default logger can exist at a time in a session
@@ -1220,7 +1256,11 @@ Function Initialize-Log {
             }
             return $true
         })]
-        [string]$LogBrackets = "[]"
+        [string]$LogBrackets = "[]",
+
+        [Parameter()]
+        [alias('F')]
+        [switch]$Force
     )
 
     # Create a new logger instance
@@ -1248,6 +1288,19 @@ Function Initialize-Log {
     $Logger.SetLogBrackets($LogBrackets)
 
     If ($Default) {
+        # Check if default logger already exists and Force is not specified
+        if ($Script:DefaultLog -and -not $Force) {
+            Write-Error "A default logger has already been initialized. Use -Force parameter to overwrite the existing default logger."
+            Write-Error "Current default logger: $($Script:DefaultLog.LogName) at $($Script:DefaultLog.LogPath)"
+            Write-Error "Attempted new logger: $($Logger.LogName) at $($Logger.LogPath)"
+            Return
+        }
+        
+        # Warn if overwriting with Force
+        if ($Script:DefaultLog -and $Force) {
+            Write-Warning "Overwriting existing default logger '$($Script:DefaultLog.LogName)' with new logger '$($Logger.LogName)'"
+        }
+        
         $Script:DefaultLog = $Logger
         Write-Verbose "Default logger initialized: $($Logger.LogName) at $($Logger.LogPath)"
         Return
@@ -2843,7 +2896,8 @@ Export-ModuleMember -Function @(
     'Write-LogDebug',
     'Write-LogSuccess',
     'Get-LoggerInfo',
-    'Test-Logger'
+    'Test-Logger',
+    'Test-DefaultLogger'
 )
 
 # Note: The Logger class is automatically available when the module is imported in PowerShell 5.0+

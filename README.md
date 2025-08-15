@@ -10,7 +10,7 @@ A comprehensive PowerShell logging module with automatic log rotation, compressi
 - **Flexible Output**: Write to file, console, or both
 - **Retry Mechanism**: Automatic retry on file write failures
 - **Multiple Loggers**: Support for concurrent logger instances
-- **Default Logger**: Set a default logger for simplified usage
+- **Default Logger Protection**: Force parameter required to overwrite existing default logger
 - **Pipeline Support**: Process multiple messages through the pipeline
 - **Customizable Format**: Configure timestamp format, encoding, and log prefix elements
 - **Module/Component Names**: Identify log sources in multi-component applications
@@ -19,7 +19,12 @@ A comprehensive PowerShell logging module with automatic log rotation, compressi
 
 ## Installation
 
-### Manual Installation
+### Method 1: Install from PowerShell Gallery (when published)
+```powershell
+Install-Module -Name PSLogger
+```
+
+### Method 2: Manual Installation
 1. Download the module files
 2. Copy to your PowerShell modules directory:
    ```powershell
@@ -49,6 +54,14 @@ Initialize-Log -Default -LogName "MyApplication"
 Write-Log "Application started"
 Write-Log "Warning message" -LogLevel "WARNING"
 Write-Log "Error occurred" -LogLevel "ERROR"
+
+# Attempting to create another default logger without Force will fail
+Initialize-Log -Default -LogName "AnotherApp"
+# ERROR: A default logger has already been initialized. Use -Force parameter to overwrite...
+
+# Use Force to overwrite the default logger
+Initialize-Log -Default -LogName "AnotherApp" -Force
+# WARNING: Overwriting existing default logger 'MyApplication' with new logger 'AnotherApp'
 
 # Use convenience functions
 Write-LogInfo "Information message"
@@ -209,6 +222,7 @@ Get-Process | Select-Object -First 5 | ForEach-Object {
 | ModuleName | Module/component name to include in logs | $null |
 | LogFormat | Array defining order of log elements | @('TIMESTAMP', 'LEVEL', 'MODULENAME') |
 | LogBrackets | Bracket characters for log elements (2 chars) | "[]" |
+| Force | Required to overwrite existing default logger | False |
 
 ## Log Levels
 
@@ -239,6 +253,23 @@ Get-LoggerInfo -Logger $AppLog
 # Test if logger can write to its log file
 Test-Logger
 Test-Logger -Logger $AppLog -TestMessage "Custom test"
+```
+
+### Test Default Logger
+
+```powershell
+# Check if a default logger exists
+if (Test-DefaultLogger) {
+    Write-Log "Default logger is available"
+} else {
+    Initialize-Log -Default -LogName "MyApp"
+    Write-Log "Default logger created"
+}
+
+# Prevent duplicate initialization
+if (-not (Test-DefaultLogger)) {
+    Initialize-Log -Default -LogName "Application"
+}
 ```
 
 ## Examples
@@ -328,7 +359,10 @@ Write-Log "Executing stored procedure" -Logger $DbLogger
 ### Error Handling with Logging
 
 ```powershell
-Initialize-Log -Default -LogName "Script"
+# Check if default logger exists before initializing
+if (-not (Test-DefaultLogger)) {
+    Initialize-Log -Default -LogName "Script"
+}
 
 Try {
     Write-LogInfo "Attempting operation..."
@@ -344,24 +378,67 @@ Finally {
 }
 ```
 
+### Safe Default Logger Replacement
+
+```powershell
+# Pattern 1: Check before overwriting
+if (Test-DefaultLogger) {
+    Write-Warning "Default logger already exists"
+    # Must use Force to overwrite
+    Initialize-Log -Default -LogName "NewLogger" -Force
+} else {
+    Initialize-Log -Default -LogName "NewLogger"
+}
+
+# Pattern 2: Always use Force in initialization scripts
+function Initialize-ApplicationLogging {
+    param([string]$AppName)
+    
+    # Force ensures this always works, even if called multiple times
+    Initialize-Log -Default -LogName $AppName -ModuleName "Core" -Force
+}
+
+# Pattern 3: Interactive confirmation
+if (Test-DefaultLogger) {
+    $current = Get-LoggerInfo
+    Write-Host "Current logger: $($current.LogName)"
+    $response = Read-Host "Replace with new logger? (Y/N)"
+    
+    if ($response -eq 'Y') {
+        Initialize-Log -Default -LogName "NewLogger" -Force
+    }
+}
+```
+
 ## Best Practices
 
 1. **Initialize Early**: Set up logging at the beginning of your script
-2. **Use Default Logger**: For simple scripts, use the default logger to avoid passing logger objects
-3. **Appropriate Log Levels**: Use the correct log level for each message
-4. **Include Context**: Add relevant information to log messages (timestamps, user, machine, etc.)
-5. **Handle Errors**: Always log errors with full exception details
-6. **Clean Up Old Logs**: Use rotation features to manage disk space
-7. **Test Configuration**: Use Test-Logger to verify setup before production use
+2. **Check Before Initializing**: Use Test-DefaultLogger to avoid initialization errors
+3. **Use Force Wisely**: Only use -Force when intentionally replacing the default logger
+4. **Use Default Logger**: For simple scripts, use the default logger to avoid passing logger objects
+5. **Appropriate Log Levels**: Use the correct log level for each message
+6. **Include Context**: Add relevant information to log messages (timestamps, user, machine, etc.)
+7. **Handle Errors**: Always log errors with full exception details
+8. **Clean Up Old Logs**: Use rotation features to manage disk space
+9. **Test Configuration**: Use Test-Logger to verify setup before production use
+10. **Module Names**: Use ModuleName parameter for multi-component applications
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Access Denied**: Ensure write permissions to log directory
-2. **Path Not Found**: Logger creates directories automatically, but verify parent path exists
-3. **Encoding Issues**: Use appropriate encoding for your environment
-4. **Rotation Not Working**: Check LogRoll is enabled and LogRotateOpt is valid
+1. **Default Logger Already Exists Error**
+   - **Error**: "A default logger has already been initialized"
+   - **Solution**: Use `-Force` parameter to overwrite: `Initialize-Log -Default -LogName "New" -Force`
+   - **Prevention**: Check with `Test-DefaultLogger` before initializing
+
+2. **Access Denied**: Ensure write permissions to log directory
+
+3. **Path Not Found**: Logger creates directories automatically, but verify parent path exists
+
+4. **Encoding Issues**: Use appropriate encoding for your environment
+
+5. **Rotation Not Working**: Check LogRoll is enabled and LogRotateOpt is valid
 
 ### Debug Mode
 
@@ -394,6 +471,8 @@ Contributions are welcome! Please submit issues and pull requests on the project
 
 ## Changelog
 
+## Changelog
+
 ### Version 1.0.0 (2025-08-15)
 - Initial release
 - Core logging functionality
@@ -406,5 +485,6 @@ Contributions are welcome! Please submit issues and pull requests on the project
 - Module name support for component identification
 - Customizable log format order (TIMESTAMP, LEVEL, MODULENAME)
 - Configurable bracket characters for log elements
-
 - Default log path changed to user temp directory
+- Force parameter required to overwrite default logger
+- Test-DefaultLogger function to check for existing default logger
