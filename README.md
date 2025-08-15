@@ -42,7 +42,7 @@ Import-Module PSLogger
 # Initialize a default logger
 Initialize-Log -Default -LogName "MyApplication"
 
-# Write messages to the log
+# Write messages to the log (will go to %TEMP%\MyApplication.log)
 Write-Log "Application started"
 Write-Log "Warning message" -LogLevel "WARNING"
 Write-Log "Error occurred" -LogLevel "ERROR"
@@ -146,7 +146,7 @@ Get-Process | Select-Object -First 5 | ForEach-Object {
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | LogName | Name of the log file (without extension) | "Debug" |
-| LogPath | Directory path for log files | "C:\Temp" |
+| LogPath | Directory path for log files | User's temp directory ($env:TEMP) |
 | LogLevel | Default log level | "INFO" |
 | DateTimeFormat | Timestamp format string | "yyyy-MM-dd HH:mm:ss" |
 | NoLogInfo | Omit timestamp and level from log entries | False |
@@ -199,7 +199,7 @@ Test-Logger -Logger $AppLog -TestMessage "Custom test"
 # Initialize production logger with all features
 Initialize-Log -Default `
                -LogName "Production" `
-               -LogPath "D:\Logs\Application" `
+               -LogPath "D:\Logs\Application" `  # Explicitly set path for production
                -LogLevel "INFO" `
                -LogRoll `
                -LogRotateOpt "100M" `
@@ -306,5 +306,4 @@ Contributions are welcome! Please submit issues and pull requests on the project
 - Log rotation and compression
 - Multiple logger support
 - Console output options
-
 - Convenience functions for each log level
