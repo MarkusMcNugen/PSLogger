@@ -327,7 +327,7 @@ Class Logger {
     # Initialize default values for all properties
     hidden [void] InitializeDefaults() {
         $This.LogName = "Debug"
-        $This.LogPath = "C:\Temp"
+        $This.LogPath = ""
         $This.LogLevel = "INFO"
         $This.DateTimeFormat = 'yyyy-MM-dd HH:mm:ss'
         $This.NoLogInfo = $False
@@ -2625,5 +2625,6 @@ Export-ModuleMember -Function @(
 # Users can create instances directly: $logger = [Logger]::new()
 # No explicit export needed for classes, but we're not exporting any variables
 Export-ModuleMember -Variable @()
+
 
 #endregion
