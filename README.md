@@ -12,11 +12,19 @@ A comprehensive PowerShell logging module with automatic log rotation, compressi
 - **Multiple Loggers**: Support for concurrent logger instances
 - **Default Logger**: Set a default logger for simplified usage
 - **Pipeline Support**: Process multiple messages through the pipeline
-- **Customizable Format**: Configure timestamp format and encoding
+- **Customizable Format**: Configure timestamp format, encoding, and log prefix elements
+- **Module/Component Names**: Identify log sources in multi-component applications
+- **Flexible Log Formatting**: Customize order of timestamp, level, and module name
+- **Custom Brackets**: Define custom bracket characters for log elements
 
 ## Installation
 
-### Manual Installation
+### Method 1: Install from PowerShell Gallery (when published)
+```powershell
+Install-Module -Name PSLogger
+```
+
+### Method 2: Manual Installation
 1. Download the module files
 2. Copy to your PowerShell modules directory:
    ```powershell
@@ -68,6 +76,25 @@ $DebugLog = Initialize-Log -LogName "Debug" -LogPath "C:\Logs\Debug" -WriteConso
 Write-Log "App started" -Logger $AppLog
 Write-Log "Critical error" -LogLevel "ERROR" -Logger $ErrorLog
 Write-Log "Debug info" -LogLevel "DEBUG" -Logger $DebugLog
+```
+
+### Module Names for Component Identification
+
+```powershell
+# Create loggers with module names
+$ApiLog = Initialize-Log -LogName "API" -ModuleName "WebAPI" -LogPath "C:\Logs"
+$DbLog = Initialize-Log -LogName "Database" -ModuleName "DataAccess" -LogPath "C:\Logs"
+$AuthLog = Initialize-Log -LogName "Security" -ModuleName "Authentication" -LogPath "C:\Logs"
+
+# Logs include module names for easy identification
+Write-Log "Request received" -Logger $ApiLog
+# Output: [2025-08-15 16:13:06][INFO][WebAPI] Request received
+
+Write-Log "Query executed" -Logger $DbLog
+# Output: [2025-08-15 16:13:06][INFO][DataAccess] Query executed
+
+Write-Log "User authenticated" -Logger $AuthLog
+# Output: [2025-08-15 16:13:06][INFO][Authentication] User authenticated
 ```
 
 ## Advanced Features
@@ -127,6 +154,31 @@ $CleanLog = Initialize-Log -LogName "Clean" `
 # UTF8 encoding
 $Utf8Log = Initialize-Log -LogName "UTF8" `
                           -Encoding "utf8"
+
+# Custom log format order
+$OrderedLog = Initialize-Log -LogName "Ordered" `
+                             -LogFormat @('LEVEL', 'TIMESTAMP', 'MODULENAME') `
+                             -ModuleName "Core"
+# Output: [INFO][2025-08-15 16:13:06][Core] Message
+
+# Minimal format with only level
+$MinimalLog = Initialize-Log -LogName "Minimal" `
+                             -LogFormat @('LEVEL')
+# Output: [INFO] Message
+
+# Custom brackets
+$BraceLog = Initialize-Log -LogName "Braces" `
+                           -LogBrackets "{}" `
+                           -ModuleName "Engine"
+# Output: {2025-08-15 16:13:06}{INFO}{Engine} Message
+
+$ParenLog = Initialize-Log -LogName "Parens" `
+                           -LogBrackets "()"
+# Output: (2025-08-15 16:13:06)(INFO) Message
+
+$PipeLog = Initialize-Log -LogName "Pipes" `
+                          -LogBrackets "||"
+# Output: |2025-08-15 16:13:06||INFO| Message
 ```
 
 ### Pipeline Support
@@ -159,6 +211,9 @@ Get-Process | Select-Object -First 5 | ForEach-Object {
 | WriteConsole | Output to console | False |
 | ConsoleOnly | Output to console only (no file) | False |
 | ConsoleInfo | Include timestamp/level in console output | False |
+| ModuleName | Module/component name to include in logs | $null |
+| LogFormat | Array defining order of log elements | @('TIMESTAMP', 'LEVEL', 'MODULENAME') |
+| LogBrackets | Bracket characters for log elements (2 chars) | "[]" |
 
 ## Log Levels
 
@@ -200,6 +255,7 @@ Test-Logger -Logger $AppLog -TestMessage "Custom test"
 Initialize-Log -Default `
                -LogName "Production" `
                -LogPath "D:\Logs\Application" `  # Explicitly set path for production
+               -ModuleName "MainApp" `
                -LogLevel "INFO" `
                -LogRoll `
                -LogRotateOpt "100M" `
@@ -207,11 +263,18 @@ Initialize-Log -Default `
                -LogCountMax 10 `
                -Encoding "utf8"
 
-# Log application events
+# Log application events with module identification
 Write-LogInfo "Application started at $(Get-Date)"
+# Output: [2025-08-15 16:13:06][INFO][MainApp] Application started at ...
+
 Write-LogSuccess "Database connection established"
+# Output: [2025-08-15 16:13:06][SUCCESS][MainApp] Database connection established
+
 Write-LogWarning "Memory usage above 80%"
+# Output: [2025-08-15 16:13:06][WARNING][MainApp] Memory usage above 80%
+
 Write-LogError "Failed to process request"
+# Output: [2025-08-15 16:13:06][ERROR][MainApp] Failed to process request
 ```
 
 ### Development/Debug Setup
@@ -220,14 +283,51 @@ Write-LogError "Failed to process request"
 # Initialize debug logger with console output
 $Debug = Initialize-Log -LogName "Debug" `
                         -LogPath "$PSScriptRoot\Logs" `
+                        -ModuleName "DevEnvironment" `
                         -WriteConsole `
                         -ConsoleInfo `
                         -LogLevel "DEBUG"
 
-# Detailed debugging
+# Detailed debugging with module identification
 Write-Log "Starting process..." -Logger $Debug
+# Console and file: [2025-08-15 16:13:06][INFO][DevEnvironment] Starting process...
+
 Write-Log "Variable X = $($SomeVariable)" -LogLevel "DEBUG" -Logger $Debug
+# Console and file: [2025-08-15 16:13:06][DEBUG][DevEnvironment] Variable X = ...
+
 Write-Log "Process completed" -LogLevel "SUCCESS" -Logger $Debug
+# Console and file: [2025-08-15 16:13:06][SUCCESS][DevEnvironment] Process completed
+```
+
+### Multi-Component Application
+
+```powershell
+# Initialize different loggers for application components
+$WebLogger = Initialize-Log -LogName "Web" `
+                            -ModuleName "WebServer" `
+                            -LogPath "C:\Logs\Web" `
+                            -LogFormat @('TIMESTAMP', 'LEVEL', 'MODULENAME')
+
+$ApiLogger = Initialize-Log -LogName "API" `
+                            -ModuleName "RestAPI" `
+                            -LogPath "C:\Logs\API" `
+                            -LogFormat @('TIMESTAMP', 'LEVEL', 'MODULENAME')
+
+$DbLogger = Initialize-Log -LogName "Database" `
+                           -ModuleName "DataLayer" `
+                           -LogPath "C:\Logs\DB" `
+                           -LogFormat @('LEVEL', 'MODULENAME', 'TIMESTAMP') `
+                           -LogBrackets "{}"
+
+# Each component logs with its own identifier
+Write-Log "HTTP request received" -Logger $WebLogger
+# Output: [2025-08-15 16:13:06][INFO][WebServer] HTTP request received
+
+Write-Log "API endpoint called: /users" -Logger $ApiLogger
+# Output: [2025-08-15 16:13:06][INFO][RestAPI] API endpoint called: /users
+
+Write-Log "Executing stored procedure" -Logger $DbLogger
+# Output: {INFO}{DataLayer}{2025-08-15 16:13:06} Executing stored procedure
 ```
 
 ### Error Handling with Logging
@@ -303,7 +403,12 @@ Contributions are welcome! Please submit issues and pull requests on the project
 - Initial release
 - Core logging functionality
 - Six log levels (INFO, WARNING, ERROR, CRITICAL, DEBUG, SUCCESS)
-- Log rotation and compression
+- Log rotation by size and age
+- Zip compression for archived logs
 - Multiple logger support
 - Console output options
 - Convenience functions for each log level
+- Module name support for component identification
+- Customizable log format order (TIMESTAMP, LEVEL, MODULENAME)
+- Configurable bracket characters for log elements
+- Default log path changed to user temp directory

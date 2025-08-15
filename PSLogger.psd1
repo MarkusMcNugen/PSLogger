@@ -30,7 +30,7 @@ CompanyName = 'Unknown'
 Copyright = '(c) 2025 Mark Newton. All rights reserved.'
 
 # Description of the functionality provided by this module
-Description = 'Advanced PowerShell logging module with automatic log rotation, compression, and flexible output options. Supports size-based and time-based rotation, multiple log levels, console output, and zip archiving of rotated logs.'
+Description = 'Advanced PowerShell logging module with automatic log rotation, compression, and flexible output options. Supports size-based and time-based rotation, multiple log levels, console output, zip archiving of rotated logs, module/component identification, and customizable log formatting with configurable element order and bracket styles.'
 
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '5.0'
@@ -122,7 +122,11 @@ PrivateData = @{
             'Archive',
             'PSEdition_Desktop',
             'PSEdition_Core',
-            'Windows'
+            'Windows',
+            'ComponentLogging',
+            'ModuleLogging',
+            'LogFormatting',
+            'CustomLogging'
         )
 
         # A URL to the license for this module.
@@ -137,7 +141,7 @@ PrivateData = @{
         # ReleaseNotes of this module
         ReleaseNotes = @'
 ## Version 1.0.0 - Initial Release
-- Core logging functionality with multiple log levels (INFO, WARNING, ERROR, CRITICAL, DEBUG, SUCCESS)
+- Core logging functionality with multiple log levels (INFO, WARNING, ERROR, DEBUG, SUCCESS)
 - Automatic log rotation based on file size or age
 - Zip compression for archived logs
 - Console output with color coding

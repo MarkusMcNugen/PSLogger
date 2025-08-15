@@ -1,4 +1,16 @@
-#Requires -Version 5.0
+# Create a new logger instance
+    $Logger = [Logger]::new()
+
+    # Set all properties from parameters
+    $Logger.LogName = $LogName
+    $Logger.LogPath = $LogPath
+    $Logger.LogLevel = $LogLevel
+    $Logger.DateTimeFormat = $DateTimeFormat
+    $Logger.NoLogInfo = $NoLogInfo
+    $Logger.Encoding = $Encoding
+    $Logger.LogRoll = $LogRoll
+    $Logger.LogRetry = $LogRetry
+    $Logger.Write#Requires -Version 5.0
 <#
 .SYNOPSIS
     Advanced PowerShell logging module with automatic rotation, compression, and flexible output options.
@@ -49,6 +61,31 @@
     Write-Log "Application started successfully"
     Write-Log "Warning: Low memory" -LogLevel "WARNING"
     Write-Log "Critical error occurred" -LogLevel "ERROR"
+
+.EXAMPLE
+    # Using module names for component identification
+    Import-Module PSLogger
+    
+    $WebLog = Initialize-Log -LogName "WebApp" -ModuleName "WebAPI"
+    $DbLog = Initialize-Log -LogName "Database" -ModuleName "DataLayer"
+    
+    Write-Log "API request received" -Logger $WebLog
+    # Output: [2025-08-15 16:13:06][INFO][WebAPI] API request received
+    
+    Write-Log "Database connected" -Logger $DbLog
+    # Output: [2025-08-15 16:13:06][INFO][DataLayer] Database connected
+
+.EXAMPLE
+    # Custom log format and brackets
+    Import-Module PSLogger
+    
+    $CustomLog = Initialize-Log -LogName "Custom" `
+                                -ModuleName "Engine" `
+                                -LogFormat @('LEVEL', 'MODULENAME', 'TIMESTAMP') `
+                                -LogBrackets "{}"
+    
+    Write-Log "Process started" -Logger $CustomLog
+    # Output: {INFO}{Engine}{2025-08-15 16:13:06} Process started
 
 .EXAMPLE
     # Multiple logger instances for different components
@@ -294,9 +331,16 @@ Class Logger {
     [string]$LogRotateOpt
     [bool]$LogZip
     [int]$LogCountMax
+    
+    # New formatting properties
+    [string]$ModuleName
+    [string[]]$LogFormat
+    [string]$LogBrackets
 
     # Hidden properties
     hidden [string]$LogFile
+    hidden [string]$OpenBracket
+    hidden [string]$CloseBracket
 
     # Default constructor
     Logger() {
@@ -341,6 +385,13 @@ Class Logger {
         $This.LogZip = $True
         $This.LogCountMax = 5
         
+        # New formatting defaults
+        $This.ModuleName = $null
+        $This.LogFormat = @('TIMESTAMP', 'LEVEL', 'MODULENAME')
+        $This.LogBrackets = "[]"
+        $This.OpenBracket = "["
+        $This.CloseBracket = "]"
+        
         # Set the log file path
         $This.LogFile = "$($This.LogPath)\$($This.LogName).log"
     }
@@ -348,6 +399,45 @@ Class Logger {
     # Update LogFile property when LogName or LogPath changes
     [void] UpdateLogFile() {
         $This.LogFile = "$($This.LogPath)\$($This.LogName).log"
+    }
+
+    # Validate and set log brackets
+    [void] SetLogBrackets([string]$Brackets) {
+        if ($Brackets.Length -ne 2) {
+            throw "LogBrackets parameter must be exactly 2 characters. You provided '$Brackets' which has $($Brackets.Length) character(s). Examples of valid brackets: '[]', '()', '{}', '<>', '||', '##'"
+        }
+        $This.LogBrackets = $Brackets
+        $This.OpenBracket = $Brackets[0]
+        $This.CloseBracket = $Brackets[1]
+    }
+
+    # Format the log prefix based on LogFormat array
+    hidden [string] FormatLogPrefix([string]$LogLevel) {
+        if ($This.NoLogInfo) {
+            return ""
+        }
+
+        $parts = @()
+        
+        foreach ($element in $This.LogFormat) {
+            switch ($element.ToUpper()) {
+                'TIMESTAMP' {
+                    $timestamp = [datetime]::Now.ToString($This.DateTimeFormat)
+                    $parts += "$($This.OpenBracket)$timestamp$($This.CloseBracket)"
+                }
+                'LEVEL' {
+                    $parts += "$($This.OpenBracket)$LogLevel$($This.CloseBracket)"
+                }
+                'MODULENAME' {
+                    # Only include module name if it's set
+                    if ($This.ModuleName) {
+                        $parts += "$($This.OpenBracket)$($This.ModuleName)$($This.CloseBracket)"
+                    }
+                }
+            }
+        }
+        
+        return $parts -join ''
     }
 
     # Main method to write to the log
@@ -365,29 +455,43 @@ Class Logger {
             New-Item -ItemType "Directory" -Path $This.LogPath > $Null
         }
 
+        # Get formatted prefix
+        $logPrefix = $This.FormatLogPrefix($LogLevel)
+
         # If the log file doesn't exist, create it
         If (!(Test-Path -Path $This.LogFile)) {
-            Write-Output "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] Logging started" | 
-                Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
+            if ($logPrefix) {
+                Write-Output "$logPrefix Logging started" | 
+                    Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
+            } else {
+                Write-Output "Logging started" | 
+                    Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
+            }
         # Else check if the log needs to be rotated. If rotated, create a new log file.
         } Else {
             If ($This.LogRoll -and ($This.ConfirmLogRotation() -eq $True)) {
-                Write-Output "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] Log rotated... Logging started" | 
-                    Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
+                if ($logPrefix) {
+                    Write-Output "$logPrefix Log rotated... Logging started" | 
+                        Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
+                } else {
+                    Write-Output "Log rotated... Logging started" | 
+                        Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
+                }
             }
         }
 
         # Write to the console
         If ($This.WriteConsole) {
-            # Write timestamp and log level to the console
+            # Write with log info to the console
             If ($This.ConsoleInfo) {
+                $consoleMsg = if ($logPrefix) { "$logPrefix $LogMsg" } else { $LogMsg }
                 Switch ($LogLevel) {
-                    'CRITICAL' { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor DarkRed }
-                    'ERROR'    { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor Red }
-                    'WARNING'  { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor Yellow }
-                    'SUCCESS'  { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor Green }
-                    'DEBUG'    { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor Cyan }
-                    Default    { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor White }
+                    'CRITICAL' { Write-Host $consoleMsg -ForegroundColor DarkRed }
+                    'ERROR'    { Write-Host $consoleMsg -ForegroundColor Red }
+                    'WARNING'  { Write-Host $consoleMsg -ForegroundColor Yellow }
+                    'SUCCESS'  { Write-Host $consoleMsg -ForegroundColor Green }
+                    'DEBUG'    { Write-Host $consoleMsg -ForegroundColor Cyan }
+                    Default    { Write-Host $consoleMsg -ForegroundColor White }
                 }
             # Write just the log message to the console
             } Else {
@@ -418,12 +522,12 @@ Class Logger {
             
             # Try to write to the log file
             Try {
-                # Write to the log without log info (timestamp and log level)
+                # Write to the log with or without log info
                 If ($This.NoLogInfo) {
                     Write-Output "$LogMsg" | Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding -ErrorAction Stop
-                # Write to the log with log info (timestamp and log level)
                 } Else {
-                    Write-Output "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" | 
+                    $fullMsg = if ($logPrefix) { "$logPrefix $LogMsg" } else { $LogMsg }
+                    Write-Output $fullMsg | 
                         Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding -ErrorAction Stop
                 }
                 
@@ -844,6 +948,42 @@ Function Initialize-Log {
         Range: 1-100
         Default: 5
 
+    .PARAMETER ModuleName
+        Optional module or component name to include in log entries. When set, this name
+        appears in the log prefix according to the LogFormat configuration. Useful for
+        identifying the source of log messages in multi-component applications.
+        Default: $null (not included)
+        Aliases: MN, Module
+
+    .PARAMETER LogFormat
+        Array of format elements that defines the order and components of the log prefix.
+        Valid elements:
+        - TIMESTAMP: Includes the timestamp in the format specified by DateTimeFormat
+        - LEVEL: Includes the log level (INFO, WARNING, ERROR, etc.)
+        - MODULENAME: Includes the module name if ModuleName is set
+        
+        Elements are wrapped in brackets specified by LogBrackets parameter.
+        Example: @('TIMESTAMP', 'LEVEL') produces: [2025-08-15 16:13:06][INFO]
+        Example: @('LEVEL', 'MODULENAME', 'TIMESTAMP') produces: [INFO][MyModule][2025-08-15 16:13:06]
+        
+        Default: @('TIMESTAMP', 'LEVEL', 'MODULENAME')
+        Aliases: LFmt, Format
+
+    .PARAMETER LogBrackets
+        Specifies the bracket characters used to wrap log prefix elements. Must be exactly
+        2 characters where the first is the opening bracket and the second is the closing bracket.
+        
+        Examples:
+        - "[]" produces: [2025-08-15 16:13:06][INFO][MyModule]
+        - "{}" produces: {2025-08-15 16:13:06}{INFO}{MyModule}
+        - "()" produces: (2025-08-15 16:13:06)(INFO)(MyModule)
+        - "||" produces: |2025-08-15 16:13:06||INFO||MyModule|
+        - "##" produces: #2025-08-15 16:13:06##INFO##MyModule#
+        
+        Supports escape sequences like "`t`t" for tab delimiters.
+        Default: "[]"
+        Aliases: LB, Brackets
+
     .OUTPUTS
         [Logger]
         Returns an initialized Logger class instance unless -Default is specified.
@@ -918,6 +1058,64 @@ Function Initialize-Log {
         
         $WebLog = Initialize-Log @LogConfig
         Write-Log "Web service initialized" -Logger $WebLog
+    
+    .EXAMPLE
+        # Initialize logger with module name
+        $AppLog = Initialize-Log -LogName "Application" `
+                                 -ModuleName "UserService"
+        
+        Write-Log "User authenticated" -Logger $AppLog
+        # Output: [2025-08-15 16:13:06][INFO][UserService] User authenticated
+    
+    .EXAMPLE
+        # Custom log format with different element order
+        $CustomLog = Initialize-Log -LogName "Custom" `
+                                    -LogFormat @('LEVEL', 'TIMESTAMP') `
+                                    -ModuleName "API"
+        
+        Write-Log "Request received" -Logger $CustomLog
+        # Output: [INFO][2025-08-15 16:13:06] Request received
+        # Note: MODULENAME not included since it's not in LogFormat array
+    
+    .EXAMPLE
+        # Using different bracket styles
+        $BraceLog = Initialize-Log -LogName "Braces" `
+                                   -LogBrackets "{}" `
+                                   -ModuleName "DataProcessor"
+        
+        Write-Log "Processing started" -Logger $BraceLog
+        # Output: {2025-08-15 16:13:06}{INFO}{DataProcessor} Processing started
+        
+        $PipeLog = Initialize-Log -LogName "Pipes" `
+                                  -LogBrackets "||"
+        
+        Write-Log "Data loaded" -Logger $PipeLog
+        # Output: |2025-08-15 16:13:06||INFO| Data loaded
+    
+    .EXAMPLE
+        # Minimal format with only essential elements
+        $MinimalLog = Initialize-Log -LogName "Minimal" `
+                                     -LogFormat @('LEVEL') `
+                                     -WriteConsole
+        
+        Write-Log "Simple message" -Logger $MinimalLog
+        # Output: [INFO] Simple message
+    
+    .EXAMPLE
+        # Multiple loggers with different module names
+        $AuthLog = Initialize-Log -LogName "Security" `
+                                  -ModuleName "Authentication" `
+                                  -LogPath "C:\Logs\Security"
+        
+        $DbLog = Initialize-Log -LogName "Database" `
+                                -ModuleName "DataAccess" `
+                                -LogPath "C:\Logs\Database"
+        
+        Write-Log "Login attempt" -Logger $AuthLog
+        # Output: [2025-08-15 16:13:06][INFO][Authentication] Login attempt
+        
+        Write-Log "Query executed" -Logger $DbLog
+        # Output: [2025-08-15 16:13:06][INFO][DataAccess] Query executed
     
     .NOTES
         - The function creates log directories automatically if they don't exist
@@ -1003,7 +1201,26 @@ Function Initialize-Log {
         [Parameter()]
         [alias('LF', 'LogFiles')]
         [ValidateRange(1, 100)]
-        [int]$LogCountMax = 5
+        [int]$LogCountMax = 5,
+
+        [Parameter()]
+        [alias('MN', 'Module')]
+        [string]$ModuleName = $null,
+
+        [Parameter()]
+        [alias('LFmt', 'Format')]
+        [ValidateSet('TIMESTAMP', 'LEVEL', 'MODULENAME')]
+        [string[]]$LogFormat = @('TIMESTAMP', 'LEVEL', 'MODULENAME'),
+
+        [Parameter()]
+        [alias('LB', 'Brackets')]
+        [ValidateScript({
+            if ($_.Length -ne 2) {
+                throw "LogBrackets must be exactly 2 characters. You provided '$_' which has $($_.Length) character(s)."
+            }
+            return $true
+        })]
+        [string]$LogBrackets = "[]"
     )
 
     # Create a new logger instance
@@ -1024,6 +1241,11 @@ Function Initialize-Log {
     $Logger.LogRotateOpt = $LogRotateOpt
     $Logger.LogZip = $LogZip
     $Logger.LogCountMax = $LogCountMax
+    
+    # Set new formatting properties
+    $Logger.ModuleName = $ModuleName
+    $Logger.LogFormat = $LogFormat
+    $Logger.SetLogBrackets($LogBrackets)
 
     If ($Default) {
         $Script:DefaultLog = $Logger
@@ -2399,6 +2621,9 @@ Function Get-LoggerInfo {
         WriteToConsole = $Logger.WriteConsole
         ConsoleOnly = $Logger.ConsoleOnly
         RetryCount = $Logger.LogRetry
+        ModuleName = $Logger.ModuleName
+        LogFormat = $Logger.LogFormat -join ', '
+        LogBrackets = $Logger.LogBrackets
     }
 }
 
