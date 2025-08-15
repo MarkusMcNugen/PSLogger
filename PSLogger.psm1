@@ -27,7 +27,7 @@
     The .log extension is automatically appended.
 
 .PARAMETER LogPath
-    Specifies the directory path where log files will be stored. Default is "C:\Temp".
+    Specifies the directory path where log files will be stored. Default is the user's temp directory ($env:TEMP).
     The directory is created automatically if it doesn't exist.
 
 .PARAMETER LogLevel
@@ -327,7 +327,7 @@ Class Logger {
     # Initialize default values for all properties
     hidden [void] InitializeDefaults() {
         $This.LogName = "Debug"
-        $This.LogPath = ""
+        $This.LogPath = $env:TEMP
         $This.LogLevel = "INFO"
         $This.DateTimeFormat = 'yyyy-MM-dd HH:mm:ss'
         $This.NoLogInfo = $False
@@ -772,7 +772,7 @@ Function Initialize-Log {
     .PARAMETER LogPath
         Full path to the directory where log files will be stored. Directory is created if it doesn't exist.
         Ensure the account running the script has write permissions to this location.
-        Default: "C:\Temp"
+        Default: User's temp directory ($env:TEMP)
 
     .PARAMETER LogLevel
         The default log level to be used if a log level is not specified in Write-Log.
@@ -952,7 +952,7 @@ Function Initialize-Log {
 
         [Parameter()]
         [alias ('LP')]
-        [string] $LogPath = "C:\Temp",
+        [string] $LogPath = $env:TEMP,
 
         [Parameter()]
         [alias ('LL', 'LogLvl')]
@@ -2625,6 +2625,5 @@ Export-ModuleMember -Function @(
 # Users can create instances directly: $logger = [Logger]::new()
 # No explicit export needed for classes, but we're not exporting any variables
 Export-ModuleMember -Variable @()
-
 
 #endregion
