@@ -466,8 +466,6 @@ Contributions are welcome! Please submit issues and pull requests on the project
 
 ## Changelog
 
-## Changelog
-
 ### Version 1.0.0 (2025-08-15)
 - Initial release
 - Core logging functionality
@@ -484,3 +482,4 @@ Contributions are welcome! Please submit issues and pull requests on the project
 - Force parameter required to overwrite default logger
 
 - Test-DefaultLogger function to check for existing default logger
+
