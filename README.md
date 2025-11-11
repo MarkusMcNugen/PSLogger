@@ -2,7 +2,7 @@
 
 [![PowerShell Version](https://img.shields.io/badge/PowerShell-5.0%2B-blue.svg)](https://github.com/PowerShell/PowerShell)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
-[![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)](https://github.com)
+[![Version](https://img.shields.io/badge/Version-2.0.0-green.svg)](https://github.com)
 
 **Enterprise-grade PowerShell logging module with structured logging, enrichers, handlers, filters, and advanced performance features.**
 
@@ -791,3 +791,4 @@ Contributions, bug reports, and feature requests are welcome! Please submit issu
 ---
 
 📚 **For detailed helper function documentation, see [HELPER_FUNCTIONS.md](HELPER_FUNCTIONS.md)**
+
