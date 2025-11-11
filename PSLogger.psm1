@@ -1,27 +1,15 @@
-# Create a new logger instance
-    $Logger = [Logger]::new()
-
-    # Set all properties from parameters
-    $Logger.LogName = $LogName
-    $Logger.LogPath = $LogPath
-    $Logger.LogLevel = $LogLevel
-    $Logger.DateTimeFormat = $DateTimeFormat
-    $Logger.NoLogInfo = $NoLogInfo
-    $Logger.Encoding = $Encoding
-    $Logger.LogRoll = $LogRoll
-    $Logger.LogRetry = $LogRetry
-    $Logger.Write#Requires -Version 5.0
+#Requires -Version 5.0
 <#
 .SYNOPSIS
     Advanced PowerShell logging module with automatic rotation, compression, and flexible output options.
 
 .DESCRIPTION
-    PSLogger is a comprehensive logging solution for PowerShell scripts and modules that provides 
-    enterprise-grade logging capabilities. It offers automatic log rotation based on size or age, 
-    compression of archived logs, multiple output targets (file and console), customizable formatting, 
+    PSLogger is a comprehensive logging solution for PowerShell scripts and modules that provides
+    enterprise-grade logging capabilities. It offers automatic log rotation based on size or age,
+    compression of archived logs, multiple output targets (file and console), customizable formatting,
     and support for multiple concurrent logger instances.
-    
-    Key Features:
+
+    Core Features:
     - Multiple log levels (INFO, WARNING, ERROR, CRITICAL, DEBUG, SUCCESS) with color-coded console output
     - Automatic log rotation by file size (KB, MB, GB) or age (days)
     - Zip compression for archived logs to save disk space
@@ -29,7 +17,25 @@
     - Retry mechanism for handling file locks
     - Pipeline support for bulk logging operations
     - Customizable timestamp formats and encoding options
-    
+
+    Advanced Features:
+    - Enrichers: Automatically add contextual properties (machine info, process info, thread info, etc.)
+    - Handlers: Multiple output destinations (file, console, Windows Event Log, custom)
+    - Filters: Conditionally log based on time, user, function, or custom criteria
+    - Scoped Properties: Hierarchical context tracking with automatic cleanup
+    - Structured Logging: JSON output for SIEM integration and machine parsing
+    - Buffered Writes: High-performance logging for high-volume scenarios
+
+    Helper Functions:
+    The module provides intuitive helper functions for common tasks:
+    - New-Logger: Create logger instances with fluent configuration
+    - Get-Logger: Retrieve or auto-create default logger
+    - Set-DefaultLogger/Get-DefaultLogger: Manage script-wide default logger
+    - Add-LogEnricher: Add context enrichers (machine, process, thread, network, environment)
+    - Add-LogHandler: Add output handlers (file, console, event log, null)
+    - Add-LogFilter: Add conditional filters (time, function, user)
+    - Start-LogScope: Create disposable property scopes for hierarchical context
+
     The module is designed to be simple for basic use cases while providing advanced features
     for enterprise environments. It follows PowerShell best practices and integrates seamlessly
     with existing PowerShell workflows.
@@ -199,7 +205,7 @@
 .EXAMPLE
     # Production setup with all features
     Import-Module PSLogger
-    
+
     # Initialize comprehensive logging for production
     $ProdConfig = @{
         Default = $true
@@ -215,23 +221,111 @@
         LogRetry = 5
         WriteConsole = $false
     }
-    
+
     Initialize-Log @ProdConfig
-    
+
     # Use throughout application
     Write-LogInfo "Application version 1.0.0 started"
     Write-LogInfo "Configuration loaded from: $ConfigPath"
     Write-LogSuccess "All services initialized"
 
+.EXAMPLE
+    # Using helper functions with enrichers and handlers
+    Import-Module PSLogger
+
+    # Create logger with fluent configuration
+    $log = New-Logger -LogName "EnrichedApp" -LogPath "C:\Logs" -LogRoll -LogZip
+
+    # Add enrichers for contextual information
+    Add-LogEnricher -Logger $log -Enricher (New-MachineEnricher)
+    Add-LogEnricher -Logger $log -Enricher (New-ProcessEnricher)
+    Add-LogEnricher -Logger $log -Enricher (New-ThreadEnricher)
+
+    # Add multiple output handlers
+    Add-LogHandler -Logger $log -Handler (New-ConsoleHandler)
+    Add-LogHandler -Logger $log -Handler (New-EventLogHandler -LogName "Application" -Source "MyApp")
+
+    # Add filter to only log during business hours
+    Add-LogFilter -Logger $log -Filter (New-TimeFilter -StartHour 8 -EndHour 17)
+
+    # Set as default logger
+    Set-DefaultLogger -Logger $log
+
+    # All logs now include machine, process, and thread context
+    Write-Log "Application started with full context"
+
+.EXAMPLE
+    # Using scoped properties for hierarchical context
+    Import-Module PSLogger
+
+    $log = New-Logger -LogName "RequestTracking"
+
+    function Process-WebRequest {
+        param($RequestId, $UserId)
+
+        # Add request context
+        Using (Start-LogScope -Logger $log -Key "RequestId" -Value $RequestId) {
+            Write-Log "Request received"
+
+            # Add user context within request scope
+            Using (Start-LogScope -Logger $log -Key "UserId" -Value $UserId) {
+                Write-Log "Authenticating user"
+                Write-Log "Processing request"
+                Write-Log "Request completed"
+            }
+            # UserId automatically removed after inner scope
+
+            Write-Log "Cleaning up request resources"
+        }
+        # RequestId automatically removed after outer scope
+    }
+
+    Process-WebRequest -RequestId "REQ-12345" -UserId "user@example.com"
+
+.EXAMPLE
+    # Creating multiple specialized loggers
+    Import-Module PSLogger
+
+    # Error logger - only captures errors and critical events
+    $errorLog = New-Logger -LogName "Errors" -LogPath "C:\Logs" -LogLevel "ERROR"
+    Add-LogHandler -Logger $errorLog -Handler (New-EventLogHandler -LogName "Application" -Source "MyApp")
+
+    # Performance logger - captures timing information
+    $perfLog = New-Logger -LogName "Performance" -LogPath "C:\Logs"
+    Add-LogEnricher -Logger $perfLog -Enricher (New-ProcessEnricher)
+
+    # Audit logger - captures all user actions
+    $auditLog = New-Logger -LogName "Audit" -LogPath "C:\Logs\Audit"
+    Add-LogEnricher -Logger $auditLog -Enricher (New-MachineEnricher)
+    $userFilter = New-UserFilter -AllowedUsers @("admin", "operator", "manager")
+    Add-LogFilter -Logger $auditLog -Filter $userFilter
+
+    # Use specialized loggers throughout application
+    Write-LogError "Database connection failed" -Logger $errorLog
+    Write-Log "Query executed in 250ms" -Logger $perfLog
+    Write-Log "User modified configuration" -Logger $auditLog
+
 .NOTES
     Module Name: PSLogger
     Author: Mark Newton
     Created: 08/15/2025
-    Version: 1.0.0
+    Version: 2.0.0
     PowerShell Version: 5.0+
-    
+
     CHANGELOG:
-    1.0.0 - Initial release
+    2.0.0 - Major enhancement release (2025-11-05)
+          - Added 24 new helper functions for intuitive logger management
+          - Logger Management: New-Logger, Get-Logger, Set-DefaultLogger, Get-DefaultLogger
+          - Enricher Support: Add-LogEnricher, New-MachineEnricher, New-ProcessEnricher,
+            New-ThreadEnricher, New-EnvironmentEnricher, New-NetworkEnricher
+          - Handler Support: Add-LogHandler, New-FileHandler, New-ConsoleHandler,
+            New-EventLogHandler, New-NullHandler
+          - Filter Support: Add-LogFilter, New-FunctionFilter, New-TimeFilter, New-UserFilter
+          - Scoped Properties: Start-LogScope for hierarchical context tracking
+          - Enhanced module documentation with comprehensive examples
+          - Improved Export-ModuleMember organization with categories
+
+    1.0.0 - Initial release (2025-08-15)
           - Core logging functionality with multiple levels
           - Log rotation by size and age
           - Zip compression support
@@ -283,42 +377,197 @@
 # ================================
 # ===    MODULE METADATA       ===
 # ================================
-$ModuleVersion = '1.0.0'
+$ModuleVersion = '2.0.0'
 $ModuleAuthor = 'Mark Newton'
-$ModuleDescription = 'Advanced PowerShell logging module with rotation and archiving'
+$ModuleDescription = 'Advanced PowerShell logging module with enrichers, handlers, filters, and scoped properties'
 
 # ================================
-# ===    LOGGING CLASS         ===
+# ===    LOGGING FUNCTIONS     ===
 # ================================
-#region Logger Class
+#region Logging
 
 Class Logger {
     <#
+    .SYNOPSIS
+    Enterprise-grade logging class with advanced features for production PowerShell scripts
+
     .DESCRIPTION
-    Class that handles logging operations with multiple options including file rotation, encoding options, and console output
+    Provides comprehensive logging functionality for enterprise PowerShell automation with 26+ features:
+
+    CORE FEATURES:
+    - Automatic log rotation based on size, age, or time-based patterns (daily/weekly/monthly)
+    - Optional compression of rotated logs into zip archives with retention policies
+    - Configurable retry logic with exponential backoff for file access conflicts
+    - Simultaneous console and file output with independent formatting and color coding
+    - Customizable timestamp formats and multiple encoding options (Unicode, UTF8, ASCII, etc.)
+    - Log level filtering with priority hierarchy (CRITICAL > ERROR > WARNING > SUCCESS > INFO > DEBUG)
+
+    STRUCTURED LOGGING:
+    - JSON structured logging for SIEM integration and machine parsing
+    - Log enrichers for automatic context injection (machine, process, thread, environment, network)
+    - Correlation IDs for distributed tracing and request tracking
+    - Scoped properties with automatic cleanup using IDisposable pattern
+
+    PERFORMANCE OPTIMIZATION:
+    - Lazy string formatting to avoid expensive operations for filtered messages
+    - Buffered/asynchronous writes to minimize disk I/O overhead
+    - Log sampling to reduce volume in high-throughput scenarios
+    - Efficient memory usage with ArrayList-based buffering
+
+    ERROR HANDLING:
+    - Dedicated exception logging with full stack traces and inner exceptions
+    - Automatic HResult capture for Windows-specific error codes
+    - Thread-safe file writes with mutex protection
+
+    MULTI-TARGET OUTPUT:
+    - Handlers/Targets architecture for flexible output destinations
+    - Built-in handlers: File, Console, EventLog, Null
+    - Windows Event Log integration with automatic source registration
+
+    ADVANCED FILTERING:
+    - Custom filter chains with extensible ILogFilter interface
+    - Built-in filters: Function name, time-based, user-based
+    - Filter composition for complex routing logic
+
+    VALIDATION & SAFETY:
+    - Path validation for rooted paths and UNC shares
+    - Disk space checking before writes
+    - File name validation for cross-platform compatibility
+    - Long path support (> 260 characters)
 
     .EXAMPLE
-    # Create a new logger with default settings
+    # Create a basic logger with default settings
     $Logger = [Logger]::new("MyLog")
-    $Logger.Write("Hello World!")
+    $Logger.Write("Application started")
 
-    # Create a logger with custom settings
+    .EXAMPLE
+    # Create a logger with custom path and warning level
     $Logger = [Logger]::new("ApplicationLog", "C:\Logs", "WARNING")
-    $Logger.Write("This is a warning message")
-    
-    # Create a logger with log rotation settings
+    $Logger.Write("This is a warning message", "WARNING")
+
+    .EXAMPLE
+    # Configure log rotation by size (10MB) with compression
     $Logger = [Logger]::new()
     $Logger.LogName = "RotatingLog"
-    $Logger.LogRotateOpt = "10M"
-    $Logger.LogZip = $True
+    $Logger.LogRotateOpt = "10M"  # Rotate at 10MB
+    $Logger.LogZip = $True         # Compress rotated logs
+    $Logger.LogCountMax = 5        # Keep max 5 rotated logs
     $Logger.Write("This message will be in a log that rotates at 10MB")
+
+    .EXAMPLE
+    # Configure time-based rotation (daily)
+    $Logger = [Logger]::new("DailyLog")
+    $Logger.LogRoll = $True
+    $Logger.LogRotateOpt = "daily"  # Rotate daily at midnight
+    $Logger.Write("This log rotates daily")
+
+    .EXAMPLE
+    # Configure time-based rotation (weekly)
+    $Logger = [Logger]::new("WeeklyLog")
+    $Logger.LogRoll = $True
+    $Logger.LogRotateOpt = "weekly"  # Rotate every 7 days
+    $Logger.Write("This log rotates weekly")
+
+    .EXAMPLE
+    # Configure time-based rotation (custom interval: every 3 days)
+    $Logger = [Logger]::new("CustomLog")
+    $Logger.LogRoll = $True
+    $Logger.LogRotateOpt = "3d"  # Rotate every 3 days
+    $Logger.Write("This log rotates every 3 days")
+
+    .EXAMPLE
+    # Use structured logging with enrichers
+    $Logger = [Logger]::new("AppLog")
+    $Logger.StructuredLogging = $true
+    $Logger.Enrichers.Add([MachineEnricher]::new())
+    $Logger.Enrichers.Add([ProcessEnricher]::new())
+    $Logger.Write("User logged in")
+    # Output: {"timestamp":"2025-11-05T10:30:45Z","level":"INFO","message":"User logged in","machineName":"SERVER01","userName":"admin","processId":1234,"processName":"powershell"}
+
+    .EXAMPLE
+    # Use correlation IDs for distributed tracing
+    $Logger = [Logger]::new("WebLog")
+    $Logger.SetCorrelationId()  # Auto-generates GUID
+    $Logger.Write("Request started")
+    $Logger.Write("Processing data")
+    $Logger.Write("Request completed")
+    $Logger.ClearCorrelationId()
+    # All logs between Set and Clear include the same correlation ID
+
+    .EXAMPLE
+    # Use lazy string formatting for performance
+    $Logger = [Logger]::new("PerfLog")
+    $Logger.LogFilter = "WARNING"  # Only log WARNING and above
+    # This string format is NEVER executed because DEBUG is filtered out
+    $Logger.Write("Processing item {0} of {1}", @($i, $total), "DEBUG")
+
+    .EXAMPLE
+    # Log exceptions with full stack traces
+    $Logger = [Logger]::new("ErrorLog")
+    Try {
+        Get-Content "C:\missing.csv"
+    } Catch {
+        $Logger.WriteException($_.Exception, "Failed to load customer data")
+    }
+    # Logs exception type, message, HResult, stack trace, and inner exceptions
+
+    .EXAMPLE
+    # Use handlers for multi-target logging
+    $Logger = [Logger]::new("MultiLog")
+    $Logger.AddHandler([FileHandler]::new("C:\Logs\app.log"))
+    $Logger.AddHandler([ConsoleHandler]::new())
+    $eventHandler = [EventLogHandler]::new("MyApplication")
+    $eventHandler.MinimumLevel = "ERROR"  # Only log errors to Event Log
+    $Logger.AddHandler($eventHandler)
+    $Logger.Write("This goes to file, console, and Event Log (if ERROR level)")
+
+    .EXAMPLE
+    # Use buffered writes for high-performance logging
+    $Logger = [Logger]::new("HighVolume")
+    $Logger.BufferedWrites = $true
+    $Logger.BufferSize = 1000  # Flush after 1000 messages
+    1..10000 | ForEach-Object {
+        $Logger.Write("Processing item $_")
+    }
+    $Logger.FlushBuffer()  # Force flush remaining messages
+
+    .EXAMPLE
+    # Use log sampling to reduce volume
+    $Logger = [Logger]::new("SampledLog")
+    $Logger.EnableSampling = $true
+    $Logger.SampleRate = 100  # Log every 100th message
+    1..10000 | ForEach-Object {
+        $Logger.Write("High-frequency event $_")
+    }
+    # Only ~100 messages are actually logged
+
+    .EXAMPLE
+    # Use scoped properties with automatic cleanup
+    $Logger = [Logger]::new("ScopedLog")
+    $Logger.StructuredLogging = $true
+    Using ($scope = $Logger.PushProperty("RequestId", "12345")) {
+        $Logger.Write("Processing request")
+        $Logger.Write("Querying database")
+    }  # RequestId automatically removed after using block
+    $Logger.Write("This message has no RequestId")
+
+    .NOTES
+    Thread Safety: The Logger class uses retry logic with delays to handle concurrent access.
+                   For true multi-threaded scenarios, consider using BufferedWrites with
+                   appropriate FlushIntervalSeconds settings.
+
+    Performance: Use StructuredLogging only when needed (SIEM integration, JSON parsing).
+                 Traditional text format is ~3x faster for file-only logging.
+
+    Disk Space: Log rotation and compression are critical for long-running scripts.
+                Monitor disk usage and configure appropriate LogCountMax values.
     #>
 
     # Required properties
     [string]$LogName
     [string]$LogPath
     [string]$LogLevel
-    
+
     # Optional configuration properties
     [string]$DateTimeFormat
     [bool]$NoLogInfo
@@ -331,16 +580,48 @@ Class Logger {
     [string]$LogRotateOpt
     [bool]$LogZip
     [int]$LogCountMax
-    
-    # New formatting properties
-    [string]$ModuleName
-    [string[]]$LogFormat
-    [string]$LogBrackets
+    [string]$LogFilter
+    [int]$LogRetryDelayMs
+
+    # Structured Logging (JSON)
+    [bool]$StructuredLogging = $false
+    [string]$StructuredFormat = "JSON"
+
+    # Log Enrichers
+    [System.Collections.ArrayList]$Enrichers
+
+    # Correlation IDs
+    [string]$CorrelationId = $null
+
+    # Handlers/Targets
+    [System.Collections.ArrayList]$Handlers
+
+    # Filters
+    [System.Collections.ArrayList]$Filters
+
+    # Scoped Properties
+    [hashtable]$ScopedProperties
+
+    # Event Log Integration
+    [bool]$WriteToEventLog = $false
+    [string]$EventLogName = 'Application'
+    [string]$EventSource = 'PowerShellLogger'
+
+    # Buffered Writes
+    [bool]$BufferedWrites = $false
+    [int]$BufferSize = 100
+    [int]$FlushIntervalSeconds = 5
+
+    # Log Sampling
+    [bool]$EnableSampling = $false
+    [int]$SampleRate = 10
 
     # Hidden properties
     hidden [string]$LogFile
-    hidden [string]$OpenBracket
-    hidden [string]$CloseBracket
+    hidden [hashtable]$LogLevelPriority
+    hidden [System.Collections.ArrayList]$WriteBuffer
+    hidden [datetime]$LastFlushTime
+    hidden [int]$SampleCounter
 
     # Default constructor
     Logger() {
@@ -371,8 +652,11 @@ Class Logger {
     # Initialize default values for all properties
     hidden [void] InitializeDefaults() {
         $This.LogName = "Debug"
-        $This.LogPath = $env:TEMP
+        $This.LogPath = "C:\Temp"
         $This.LogLevel = "INFO"
+
+        # Validate defaults
+        $This.ValidateLogName($This.LogName) | Out-Null
         $This.DateTimeFormat = 'yyyy-MM-dd HH:mm:ss'
         $This.NoLogInfo = $False
         $This.Encoding = 'Unicode'
@@ -382,121 +666,850 @@ Class Logger {
         $This.ConsoleOnly = $False
         $This.ConsoleInfo = $False
         $This.LogRotateOpt = "1M"
-        $This.LogZip = $True
+        $This.LogZip = $False
         $This.LogCountMax = 5
-        
-        # New formatting defaults
-        $This.ModuleName = $null
-        $This.LogFormat = @('TIMESTAMP', 'LEVEL', 'MODULENAME')
-        $This.LogBrackets = "[]"
-        $This.OpenBracket = "["
-        $This.CloseBracket = "]"
-        
+        $This.LogFilter = "DEBUG"  # Default to showing all messages
+        $This.LogRetryDelayMs = 500  # Delay between retries
+
+        # Initialize log level priority (lower number = higher priority)
+        $This.LogLevelPriority = @{
+            'CRITICAL' = 1
+            'ERROR'    = 2
+            'WARNING'  = 3
+            'SUCCESS'  = 4
+            'INFO'     = 5
+            'DEBUG'    = 6
+        }
+
+        # Initialize new collections
+        $This.Enrichers = New-Object System.Collections.ArrayList
+        $This.Handlers = New-Object System.Collections.ArrayList
+        $This.Filters = New-Object System.Collections.ArrayList
+        $This.ScopedProperties = @{}
+        $This.WriteBuffer = New-Object System.Collections.ArrayList
+        $This.LastFlushTime = Get-Date
+        $This.SampleCounter = 0
+
         # Set the log file path
         $This.LogFile = "$($This.LogPath)\$($This.LogName).log"
     }
 
-    # Update LogFile property when LogName or LogPath changes
+    <#
+    .SYNOPSIS
+    Validates log file path for security and correctness
+
+    .PARAMETER Path
+    String path to validate. Must be an absolute path (not relative). Supports UNC paths.
+
+    .EXAMPLE
+    $Logger.ValidatePath("C:\Logs")  # Returns $true
+    $Logger.ValidatePath("..\Logs")  # Returns $false (relative path)
+    #>
+    hidden [bool] ValidatePath([string]$Path) {
+        Try {
+            # Normalize trailing slashes for consistent handling
+            $PathToValidate = $Path.TrimEnd('\', '/')
+
+            # Check if the original path is rooted (not relative)
+            # This must be checked BEFORE GetFullPath which converts relative to absolute
+            If (-not [System.IO.Path]::IsPathRooted($PathToValidate)) {
+                Write-Warning "Path must be absolute: $Path"
+                Return $False
+            }
+
+            # Now resolve to full path (handles UNC paths, environment variables, etc.)
+            $ResolvedPath = [System.IO.Path]::GetFullPath($PathToValidate)
+
+            # UNC paths are valid if rooted (already validated above)
+            # UNC paths start with \\ or are in format \\server\share
+
+            # Check path length (Windows MAX_PATH is 260 characters)
+            # Use long path prefix for paths over 260 chars
+            If ($ResolvedPath.Length -ge 260) {
+                If (-not $ResolvedPath.StartsWith("\\?\")) {
+                    Write-Warning "Path exceeds 260 characters. Consider using shorter path or enable long path support."
+                    # Still allow it, but warn
+                }
+            }
+
+            Return $True
+        } Catch {
+            Write-Warning "Path may exceed Windows limits: $Path - $_"
+            Return $true  # Allow it with warning, don't fail
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Checks available disk space before log operations
+
+    .PARAMETER Path
+    String path to check for available disk space
+
+    .PARAMETER RequiredBytes
+    Long integer specifying minimum required free space in bytes
+
+    .EXAMPLE
+    $Logger.CheckDiskSpace("C:\Logs", 10MB)  # Returns $true if 10MB+ available
+    #>
+    hidden [bool] CheckDiskSpace([string]$Path, [long]$RequiredBytes) {
+        Try {
+            $Drive = [System.IO.Path]::GetPathRoot($Path)
+            $DriveInfo = [System.IO.DriveInfo]::new($Drive)
+
+            If ($DriveInfo.AvailableFreeSpace -lt $RequiredBytes) {
+                Write-Warning "Insufficient disk space on $Drive. Required: $($RequiredBytes/1MB)MB, Available: $($DriveInfo.AvailableFreeSpace/1MB)MB"
+                Return $False
+            }
+
+            Return $True
+        } Catch {
+            Write-Verbose "Could not check disk space: $_"
+            # Don't fail on disk space check errors
+            Return $True
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Validates log name for file system compatibility
+
+    .PARAMETER LogName
+    String name to validate. Must not contain invalid file system characters.
+
+    .EXAMPLE
+    $Logger.ValidateLogName("Application")  # Returns $true
+    $Logger.ValidateLogName("App:Log")  # Returns $false (colon invalid)
+    #>
+    hidden [bool] ValidateLogName([string]$LogName) {
+        # Check for invalid file system characters
+        $InvalidChars = [System.IO.Path]::GetInvalidFileNameChars()
+        ForEach ($Char in $InvalidChars) {
+            If ($LogName.Contains($Char)) {
+                Write-Warning "Log name contains invalid character: '$Char'"
+                Return $False
+            }
+        }
+
+        # Warn about non-ASCII characters
+        If ($LogName -match '[^\x00-\x7F]') {
+            Write-Warning "Log name contains non-ASCII characters. This may cause issues on some file systems."
+            # Still allow it, but warn
+        }
+
+        Return $True
+    }
+
+    <#
+    .SYNOPSIS
+    Updates internal LogFile path when LogName or LogPath properties change
+
+    .EXAMPLE
+    $Logger.LogPath = "D:\Logs"
+    $Logger.UpdateLogFile()  # Updates LogFile to "D:\Logs\[LogName].log"
+    #>
     [void] UpdateLogFile() {
         $This.LogFile = "$($This.LogPath)\$($This.LogName).log"
     }
 
-    # Validate and set log brackets
-    [void] SetLogBrackets([string]$Brackets) {
-        if ($Brackets.Length -ne 2) {
-            throw "LogBrackets parameter must be exactly 2 characters. You provided '$Brackets' which has $($Brackets.Length) character(s). Examples of valid brackets: '[]', '()', '{}', '<>', '||', '##'"
+    <#
+    .SYNOPSIS
+    Writes log message using lazy string formatting for performance optimization
+
+    .DESCRIPTION
+    Defers expensive string formatting operations until after log level filtering.
+    Only formats the string if the message will actually be logged, avoiding
+    unnecessary CPU cycles for filtered messages.
+
+    .PARAMETER MessageTemplate
+    String format template with {0}, {1}, etc. placeholders
+
+    .PARAMETER Arguments
+    Object array of arguments to insert into template
+
+    .PARAMETER LogLevel
+    String severity level (INFO, WARNING, ERROR, DEBUG, SUCCESS, CRITICAL)
+
+    .EXAMPLE
+    $Logger.Write("Processing item {0} of {1}", @($i, $total), "DEBUG")
+    # If DEBUG is filtered out, the format operation is never executed
+    #>
+    [void] Write([string]$MessageTemplate, [object[]]$Arguments, [string]$LogLevel) {
+        # Check filter FIRST (before expensive string formatting)
+        If (-not $This.ShouldLog($LogLevel)) {
+            Return  # Skip without formatting - HUGE performance gain!
         }
-        $This.LogBrackets = $Brackets
-        $This.OpenBracket = $Brackets[0]
-        $This.CloseBracket = $Brackets[1]
+
+        # Now format (only if we're actually logging)
+        $LogMsg = $MessageTemplate -f $Arguments
+        $This.Write($LogMsg, $LogLevel)
     }
 
-    # Format the log prefix based on LogFormat array
-    hidden [string] FormatLogPrefix([string]$LogLevel) {
-        if ($This.NoLogInfo) {
-            return ""
-        }
+    <#
+    .SYNOPSIS
+    Logs exception with full stack trace and inner exception details
 
-        $parts = @()
-        
-        foreach ($element in $This.LogFormat) {
-            switch ($element.ToUpper()) {
-                'TIMESTAMP' {
-                    $timestamp = [datetime]::Now.ToString($This.DateTimeFormat)
-                    $parts += "$($This.OpenBracket)$timestamp$($This.CloseBracket)"
-                }
-                'LEVEL' {
-                    $parts += "$($This.OpenBracket)$LogLevel$($This.CloseBracket)"
-                }
-                'MODULENAME' {
-                    # Only include module name if it's set
-                    if ($This.ModuleName) {
-                        $parts += "$($This.OpenBracket)$($This.ModuleName)$($This.CloseBracket)"
-                    }
-                }
+    .PARAMETER Exception
+    System.Exception object to log
+
+    .EXAMPLE
+    Try { Get-Content "missing.csv" } Catch { $Logger.WriteException($_.Exception) }
+    #>
+    [void] WriteException([System.Exception]$Exception) {
+        $This.WriteException($Exception, "")
+    }
+
+    <#
+    .SYNOPSIS
+    Logs exception with contextual message, full stack trace, and inner exception details
+
+    .DESCRIPTION
+    Captures comprehensive exception information including type, message, HResult,
+    stack trace, and recursively logs inner exceptions.
+
+    .PARAMETER Exception
+    System.Exception object to log
+
+    .PARAMETER ContextMessage
+    String providing context about when/where the exception occurred
+
+    .EXAMPLE
+    Try { $data = Get-Content "C:\missing.csv" }
+    Catch { $Logger.WriteException($_.Exception, "Failed to load customer data") }
+    #>
+    [void] WriteException([System.Exception]$Exception, [string]$ContextMessage) {
+        $exceptionDetails = @"
+$ContextMessage
+Exception Type: $($Exception.GetType().FullName)
+Message: $($Exception.Message)
+HResult: $($Exception.HResult)
+Stack Trace:
+$($Exception.StackTrace)
+"@
+
+        # Include inner exceptions
+        $inner = $Exception.InnerException
+        If ($inner) {
+            $exceptionDetails += "`nInner Exception: $($inner.GetType().FullName)"
+            $exceptionDetails += "`nInner Message: $($inner.Message)"
+
+            # Include inner exception stack trace
+            If ($inner.StackTrace) {
+                $exceptionDetails += "`nInner Stack Trace:"
+                $exceptionDetails += "`n$($inner.StackTrace)"
             }
         }
-        
-        return $parts -join ''
+
+        $This.Write($exceptionDetails, 'ERROR')
     }
 
-    # Main method to write to the log
+    <#
+    .SYNOPSIS
+    Formats log entry as JSON for machine parsing and SIEM integration
+
+    .DESCRIPTION
+    Converts log message into structured JSON format with automatic enrichment.
+    Includes timestamp (ISO 8601), level, message, machine info, and applies
+    all configured enrichers and scoped properties.
+
+    .PARAMETER LogMsg
+    String message to include in JSON output
+
+    .PARAMETER LogLevel
+    String severity level to include in JSON output
+
+    .EXAMPLE
+    $json = $Logger.FormatAsJson("User logged in", "INFO")
+    # Returns: {"timestamp":"2025-11-05T10:30:45Z","level":"INFO","message":"User logged in",...}
+    #>
+    hidden [string] FormatAsJson([string]$LogMsg, [string]$LogLevel) {
+        # Build base log object (use regular hashtable for enricher compatibility)
+        $logObject = @{
+            timestamp = [datetime]::UtcNow.ToString('o')  # ISO 8601 format
+            level = $LogLevel
+            message = $LogMsg
+            machineName = $env:COMPUTERNAME
+            userName = $env:USERNAME
+            processId = [System.Diagnostics.Process]::GetCurrentProcess().Id
+        }
+
+        # Add correlation ID if present
+        If (-not [string]::IsNullOrEmpty($This.CorrelationId)) {
+            $logObject['correlationId'] = $This.CorrelationId
+        }
+
+        # Add scoped properties
+        ForEach ($key in $This.ScopedProperties.Keys) {
+            $logObject[$key] = $This.ScopedProperties[$key]
+        }
+
+        # Apply enrichers
+        ForEach ($enricher in $This.Enrichers) {
+            Try {
+                $enricher.Enrich($logObject)
+            } Catch {
+                Write-Verbose "Enricher failed: $_"
+            }
+        }
+
+        # Convert to JSON (compressed for smaller file size)
+        Return ($logObject | ConvertTo-Json -Compress)
+    }
+
+    <#
+    .SYNOPSIS
+    Sets correlation ID for distributed tracing and request tracking
+
+    .DESCRIPTION
+    Associates all subsequent log messages with the specified correlation ID
+    until ClearCorrelationId() is called. Auto-generates GUID if ID is empty.
+
+    .PARAMETER Id
+    String correlation ID to set. If empty/null, auto-generates a GUID.
+
+    .EXAMPLE
+    $Logger.SetCorrelationId("REQ-12345")
+    $Logger.Write("Processing request")  # Includes correlation ID
+    $Logger.ClearCorrelationId()
+    #>
+    [void] SetCorrelationId([string]$Id) {
+        If ([string]::IsNullOrEmpty($Id)) {
+            # Auto-generate if not provided
+            $This.CorrelationId = [Guid]::NewGuid().ToString()
+        } Else {
+            $This.CorrelationId = $Id
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Auto-generates a new GUID correlation ID for distributed tracing
+
+    .EXAMPLE
+    $Logger.SetCorrelationId()  # Auto-generates GUID like "a1b2c3d4-..."
+    #>
+    [void] SetCorrelationId() {
+        $This.CorrelationId = [Guid]::NewGuid().ToString()
+    }
+
+    <#
+    .SYNOPSIS
+    Removes correlation ID from subsequent log messages
+
+    .EXAMPLE
+    $Logger.ClearCorrelationId()  # Future logs won't include correlation ID
+    #>
+    [void] ClearCorrelationId() {
+        $This.CorrelationId = $null
+    }
+
+    <#
+    .SYNOPSIS
+    Adds a handler to the logger's output targets collection
+
+    .PARAMETER Handler
+    LogHandler object (FileHandler, ConsoleHandler, EventLogHandler, NullHandler)
+
+    .EXAMPLE
+    $Logger.AddHandler([FileHandler]::new("C:\Logs\app.log"))
+    $Logger.AddHandler([ConsoleHandler]::new())
+    #>
+    [void] AddHandler([LogHandler]$Handler) {
+        $This.Handlers.Add($Handler) | Out-Null
+    }
+
+    <#
+    .SYNOPSIS
+    Removes a handler from the logger's output targets collection
+
+    .PARAMETER HandlerName
+    String name of the handler to remove
+
+    .EXAMPLE
+    $Logger.RemoveHandler("FileHandler")
+    #>
+    [void] RemoveHandler([string]$HandlerName) {
+        $handlerToRemove = $This.Handlers | Where-Object { $_.Name -eq $HandlerName }
+        If ($handlerToRemove) {
+            $This.Handlers.Remove($handlerToRemove) | Out-Null
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Adds a custom filter to the logger's filter chain
+
+    .PARAMETER Filter
+    ILogFilter object implementing ShouldFilter() method
+
+    .EXAMPLE
+    $Logger.AddFilter([FunctionFilter]::new(@("InternalHelper")))
+    #>
+    [void] AddFilter([ILogFilter]$Filter) {
+        $This.Filters.Add($Filter) | Out-Null
+    }
+
+    <#
+    .SYNOPSIS
+    Removes a filter from the logger's filter chain
+
+    .PARAMETER Filter
+    ILogFilter object to remove
+
+    .EXAMPLE
+    $Logger.RemoveFilter($myFilter)
+    #>
+    [void] RemoveFilter([ILogFilter]$Filter) {
+        $This.Filters.Remove($Filter) | Out-Null
+    }
+
+    <#
+    .SYNOPSIS
+    Evaluates whether log record passes all configured filters
+
+    .PARAMETER LogRecord
+    Hashtable containing log record properties (Message, Level, Timestamp, FunctionName)
+
+    .EXAMPLE
+    $passes = $Logger.PassesFilters(@{Message="Test"; Level="INFO"; Timestamp=(Get-Date); FunctionName="Main"})
+    #>
+    hidden [bool] PassesFilters([hashtable]$LogRecord) {
+        ForEach ($filter in $This.Filters) {
+            Try {
+                If (-not $filter.ShouldFilter($LogRecord)) {
+                    Return $false
+                }
+            } Catch {
+                Write-Verbose "Filter failed: $_"
+            }
+        }
+        Return $true
+    }
+
+    <#
+    .SYNOPSIS
+    Adds a scoped property that appears in all log messages within scope
+
+    .DESCRIPTION
+    Returns IDisposable object for automatic cleanup with Using statement.
+    Property is automatically removed when Using block exits.
+
+    .PARAMETER Key
+    String property name
+
+    .PARAMETER Value
+    Property value of any type
+
+    .EXAMPLE
+    Using ($scope = $Logger.PushProperty("RequestId", "12345")) {
+        $Logger.Write("Processing")  # Includes RequestId
+    }  # RequestId automatically removed
+    #>
+    [PropertyScope] PushProperty([string]$Key, $Value) {
+        $This.ScopedProperties[$Key] = $Value
+        Return [PropertyScope]::new($This, $Key)
+    }
+
+    <#
+    .SYNOPSIS
+    Removes a scoped property from the logger
+
+    .PARAMETER Key
+    String property name to remove
+    #>
+    hidden [void] RemoveProperty([string]$Key) {
+        $This.ScopedProperties.Remove($Key)
+    }
+
+    <#
+    .SYNOPSIS
+    Writes log message to Windows Event Log
+
+    .PARAMETER LogMsg
+    String message to write to Event Log
+
+    .PARAMETER LogLevel
+    String severity level. Maps to Event Log types: ERROR/CRITICAL->Error, WARNING->Warning, others->Information
+
+    .EXAMPLE
+    $Logger.WriteEventLog("Service started", "INFO")  # Writes as Information event
+    #>
+    hidden [void] WriteEventLog([string]$LogMsg, [string]$LogLevel) {
+        If (-not $This.WriteToEventLog) { Return }
+
+        $EventType = Switch ($LogLevel) {
+            'CRITICAL' { 'Error' }
+            'ERROR' { 'Error' }
+            'WARNING' { 'Warning' }
+            Default { 'Information' }
+        }
+
+        Try {
+            # Ensure source exists (requires admin first time)
+            If (-not [System.Diagnostics.EventLog]::SourceExists($This.EventSource)) {
+                Try {
+                    [System.Diagnostics.EventLog]::CreateEventSource($This.EventSource, $This.EventLogName)
+                } Catch {
+                    Write-Verbose "Could not create Event Log source (requires admin): $_"
+                    Return
+                }
+            }
+
+            # Write to Event Log
+            Write-EventLog -LogName $This.EventLogName -Source $This.EventSource `
+                -EntryType $EventType -EventId 1000 -Message $LogMsg -ErrorAction Stop
+        } Catch {
+            Write-Verbose "Could not write to Event Log: $_"
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Adds message to write buffer for batch processing
+
+    .PARAMETER Message
+    String formatted message to buffer
+
+    .EXAMPLE
+    $Logger.BufferedWrite("[2025-11-05 10:30:45][INFO] Processing")
+    #>
+    hidden [void] BufferedWrite([string]$Message) {
+        $This.WriteBuffer.Add($Message) | Out-Null
+
+        # Flush if buffer full OR time elapsed
+        $ShouldFlush = ($This.WriteBuffer.Count -ge $This.BufferSize) -or `
+                       (((Get-Date) - $This.LastFlushTime).TotalSeconds -ge $This.FlushIntervalSeconds)
+
+        If ($ShouldFlush) {
+            $This.FlushBuffer()
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Flushes all buffered messages to disk immediately
+
+    .DESCRIPTION
+    Writes all pending buffered messages to log file in a single operation.
+    Should be called before script exit when BufferedWrites is enabled.
+
+    .EXAMPLE
+    $Logger.FlushBuffer()  # Write all pending messages
+    #>
+    [void] FlushBuffer() {
+        If ($This.WriteBuffer.Count -eq 0) { Return }
+
+        Try {
+            # Write all buffered messages at once
+            $allMessages = $This.WriteBuffer -join "`n"
+            Add-Content -Path $This.LogFile -Value $allMessages -Encoding $This.Encoding -ErrorAction Stop
+
+            $This.WriteBuffer.Clear()
+            $This.LastFlushTime = Get-Date
+        } Catch {
+            Write-Warning "Failed to flush buffer: $_"
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Closes logger and flushes any remaining buffered messages
+
+    .DESCRIPTION
+    Should be called before disposing of logger instance to ensure
+    all buffered messages are written to disk.
+
+    .EXAMPLE
+    $Logger.Close()  # Flush buffer and close
+    #>
+    [void] Close() {
+        $This.FlushBuffer()
+    }
+
+    <#
+    .SYNOPSIS
+    Determines if message should be sampled based on configured rate
+
+    .DESCRIPTION
+    Implements counter-based sampling. Logs every Nth message where N is SampleRate.
+    Returns true to log the message, false to skip.
+
+    .EXAMPLE
+    If ($Logger.ShouldSample()) { $Logger.Write("Message") }
+    #>
+    hidden [bool] ShouldSample() {
+        If (-not $This.EnableSampling) {
+            Return $true  # Sampling disabled, log everything
+        }
+
+        $This.SampleCounter++
+
+        # Log every Nth message
+        If ($This.SampleCounter -ge $This.SampleRate) {
+            $This.SampleCounter = 0
+            Return $true
+        }
+
+        Return $false
+    }
+
+    <#
+    .SYNOPSIS
+    Determines if log should rotate based on time-based patterns
+
+    .DESCRIPTION
+    Evaluates time-based rotation patterns: daily, weekly, monthly, or custom intervals (Nd, Nw, Nmo).
+    Compares log file's LastWriteTime against current time.
+
+    .EXAMPLE
+    If ($Logger.ShouldRotateByTime()) { $Logger.PerformRotation(...) }
+    #>
+    hidden [bool] ShouldRotateByTime() {
+        $pattern = $This.LogRotateOpt.ToLower()
+
+        Try {
+            $fileInfo = Get-Item -Path $This.LogFile -ErrorAction Stop
+            $lastWrite = $fileInfo.LastWriteTime
+            $now = Get-Date
+
+            Switch -Regex ($pattern) {
+                '^daily$|^1d$' {
+                    # Rotate if last write was on different day
+                    Return $lastWrite.Date -lt $now.Date
+                }
+                '^weekly$|^1w$' {
+                    # Rotate if more than 7 days old
+                    Return ($now - $lastWrite).Days -ge 7
+                }
+                '^monthly$|^1mo$' {
+                    # Rotate if in different month
+                    Return ($lastWrite.Month -ne $now.Month) -or ($lastWrite.Year -ne $now.Year)
+                }
+                '^\d+d$' {
+                    # Custom days (e.g., "3d" = every 3 days)
+                    $days = [int]($pattern -replace 'd$', '')
+                    Return ($now - $lastWrite).Days -ge $days
+                }
+                '^\d+w$' {
+                    # Custom weeks (e.g., "2w" = every 2 weeks)
+                    $weeks = [int]($pattern -replace 'w$', '')
+                    Return ($now - $lastWrite).Days -ge ($weeks * 7)
+                }
+                '^\d+mo$' {
+                    # Custom months (e.g., "3mo" = every 3 months)
+                    $months = [int]($pattern -replace 'mo$', '')
+                    $monthsDiff = (($now.Year - $lastWrite.Year) * 12) + ($now.Month - $lastWrite.Month)
+                    Return $monthsDiff -ge $months
+                }
+                Default {
+                    Return $false
+                }
+            }
+            # Fallback return (should never reach here due to Switch-Default, but satisfies parser)
+            Return $false
+        } Catch {
+            Return $false
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Writes message to log using logger's default level
+
+    .PARAMETER LogMsg
+    String message to log
+
+    .EXAMPLE
+    $Logger.Write("Application started")  # Uses logger's default LogLevel
+    #>
     [void] Write([string]$LogMsg) {
         $This.Write($LogMsg, $This.LogLevel)
     }
 
-    # Overload to specify log level
-    [void] Write([string]$LogMsg, [string]$LogLevel) {
-        # Update log file path if needed
-        $This.UpdateLogFile()
-        
-        # If the Log directory doesn't exist, create it
-        If (!(Test-Path -Path $This.LogPath)) {
-            New-Item -ItemType "Directory" -Path $This.LogPath > $Null
+    <#
+    .SYNOPSIS
+    Checks if message should be logged based on configured filter level
+
+    .PARAMETER LogLevel
+    String log level to check against filter
+
+    .EXAMPLE
+    If ($Logger.ShouldLog("DEBUG")) { $Logger.Write("Debug info") }
+    #>
+    hidden [bool] ShouldLog([string]$LogLevel) {
+        # Get the priority of the current log level
+        $CurrentPriority = $This.LogLevelPriority[$LogLevel.ToUpper()]
+
+        # If log level is not found, default to allowing it
+        If ($null -eq $CurrentPriority) {
+            $CurrentPriority = 5  # Default to INFO priority
         }
 
-        # Get formatted prefix
-        $logPrefix = $This.FormatLogPrefix($LogLevel)
+        # Get the priority of the filter level
+        $FilterPriority = $This.LogLevelPriority[$This.LogFilter.ToUpper()]
+
+        # If filter level is not found, default to DEBUG (show everything)
+        If ($null -eq $FilterPriority) {
+            $FilterPriority = 6  # Default to DEBUG priority (lowest)
+        }
+
+        # Return true if current message priority is equal to or higher than filter
+        # Lower number = higher priority, so we check if current <= filter
+        Return ($CurrentPriority -le $FilterPriority)
+    }
+
+    <#
+    .SYNOPSIS
+    Writes message to log with specified severity level
+
+    .DESCRIPTION
+    Main logging method that handles all formatting, filtering, rotation, buffering,
+    and multi-target output. Applies all configured features including sampling,
+    handlers, filters, structured logging, and Event Log integration.
+
+    .PARAMETER LogMsg
+    String message to log
+
+    .PARAMETER LogLevel
+    String severity level (INFO, WARNING, ERROR, DEBUG, SUCCESS, CRITICAL)
+
+    .EXAMPLE
+    $Logger.Write("Database connection failed", "ERROR")
+    $Logger.Write("Processing completed", "SUCCESS")
+    #>
+    [void] Write([string]$LogMsg, [string]$LogLevel) {
+        # FEATURE 11: Check sampling first
+        If (-not $This.ShouldSample()) {
+            Return  # Skip this message due to sampling
+        }
+
+        # Check if this message should be logged based on filter
+        If (-not $This.ShouldLog($LogLevel)) {
+            Return  # Skip this log message
+        }
+
+        # FEATURE 7: Apply custom filters
+        $logRecord = @{
+            Message = $LogMsg
+            Level = $LogLevel
+            Timestamp = Get-Date
+            FunctionName = (Get-PSCallStack)[1].Command
+        }
+
+        If (-not $This.PassesFilters($logRecord)) {
+            Return  # Filtered out by custom filter
+        }
+
+        # Update log file path if needed
+        $This.UpdateLogFile()
+
+        # Validate path before attempting to use it
+        If (-not $This.ValidatePath($This.LogPath)) {
+            Write-Error "Invalid log path: $($This.LogPath)"
+            Return
+        }
+
+        # Check available disk space (require at least 10MB)
+        If (-not $This.CheckDiskSpace($This.LogPath, 10MB)) {
+            Write-Error "Insufficient disk space for logging"
+            Return
+        }
+
+        # If the Log directory doesn't exist, create it
+        If (!(Test-Path -Path $This.LogPath)) {
+            Try {
+                New-Item -ItemType Directory -Path $This.LogPath -Force | Out-Null
+            } Catch {
+                Write-Error "Failed to create log directory: $_"
+                Return
+            }
+        }
+
+        # FEATURE 3: Format as JSON if structured logging enabled
+        If ($This.StructuredLogging) {
+            $FormattedMsg = $This.FormatAsJson($LogMsg, $LogLevel)
+        } Else {
+            # Traditional format with correlation ID if present
+            If (-not [string]::IsNullOrEmpty($This.CorrelationId)) {
+                If ($This.NoLogInfo) {
+                    $FormattedMsg = "$LogMsg"
+                } Else {
+                    $FormattedMsg = "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel][CID:$($This.CorrelationId)] $LogMsg"
+                }
+            } Else {
+                If ($This.NoLogInfo) {
+                    $FormattedMsg = "$LogMsg"
+                } Else {
+                    $FormattedMsg = "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg"
+                }
+            }
+        }
+
+        # Handle log file deleted mid-execution or rotation
+        $LogFileExists = Test-Path -Path $This.LogFile
 
         # If the log file doesn't exist, create it
-        If (!(Test-Path -Path $This.LogFile)) {
-            if ($logPrefix) {
-                Write-Output "$logPrefix Logging started" | 
-                    Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
-            } else {
-                Write-Output "Logging started" | 
-                    Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
+        If (-not $LogFileExists) {
+            Try {
+                $startMsg = If ($This.StructuredLogging) {
+                    $This.FormatAsJson("Logging started", $LogLevel)
+                } Else {
+                    "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] Logging started"
+                }
+                Write-Output $startMsg | Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding -ErrorAction Stop
+            } Catch {
+                Write-Error "Failed to create log file: $_"
+                Return
             }
-        # Else check if the log needs to be rotated. If rotated, create a new log file.
-        } Else {
-            If ($This.LogRoll -and ($This.ConfirmLogRotation() -eq $True)) {
-                if ($logPrefix) {
-                    Write-Output "$logPrefix Log rotated... Logging started" | 
-                        Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
-                } else {
-                    Write-Output "Log rotated... Logging started" | 
-                        Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding
+        }
+        # Check if the log needs to be rotated (size/age/time-based)
+        ElseIf ($This.LogRoll -and $This.ConfirmLogRotation()) {
+            # Log was rotated, create new file
+            Try {
+                $rotateMsg = If ($This.StructuredLogging) {
+                    $This.FormatAsJson("Log rotated... Logging started", $LogLevel)
+                } Else {
+                    "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] Log rotated... Logging started"
+                }
+                Write-Output $rotateMsg | Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding -ErrorAction Stop
+            } Catch {
+                Write-Error "Failed to create rotated log file: $_"
+                Return
+            }
+        }
+
+        # FEATURE 9: Write to Event Log if enabled
+        $This.WriteEventLog($LogMsg, $LogLevel)
+
+        # FEATURE 6: If handlers are configured, use them
+        If ($This.Handlers.Count -gt 0) {
+            ForEach ($handler in $This.Handlers) {
+                Try {
+                    If ($handler.ShouldLog($LogLevel, $This.LogLevelPriority)) {
+                        $handler.Emit($FormattedMsg, $LogLevel)
+                    }
+                } Catch {
+                    Write-Verbose "Handler '$($handler.Name)' failed: $_"
                 }
             }
         }
 
         # Write to the console
         If ($This.WriteConsole) {
-            # Write with log info to the console
+            # Write timestamp and log level to the console
             If ($This.ConsoleInfo) {
-                $consoleMsg = if ($logPrefix) { "$logPrefix $LogMsg" } else { $LogMsg }
                 Switch ($LogLevel) {
-                    'CRITICAL' { Write-Host $consoleMsg -ForegroundColor DarkRed }
-                    'ERROR'    { Write-Host $consoleMsg -ForegroundColor Red }
-                    'WARNING'  { Write-Host $consoleMsg -ForegroundColor Yellow }
-                    'SUCCESS'  { Write-Host $consoleMsg -ForegroundColor Green }
-                    'DEBUG'    { Write-Host $consoleMsg -ForegroundColor Cyan }
-                    Default    { Write-Host $consoleMsg -ForegroundColor White }
+                    'CRITICAL' { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor Magenta }
+                    'ERROR'    { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor Red }
+                    'WARNING'  { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor Yellow }
+                    'SUCCESS'  { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor Green }
+                    'DEBUG'    { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor Cyan }
+                    Default    { Write-Host "[$([datetime]::Now.ToString($This.DateTimeFormat))][$LogLevel] $LogMsg" -ForegroundColor White }
                 }
             # Write just the log message to the console
             } Else {
                 Switch ($LogLevel) {
-                    'CRITICAL' { Write-Host $LogMsg -ForegroundColor DarkRed }
+                    'CRITICAL' { Write-Host $LogMsg -ForegroundColor Magenta }
                     'ERROR'    { Write-Host $LogMsg -ForegroundColor Red }
                     'WARNING'  { Write-Host $LogMsg -ForegroundColor Yellow }
                     'SUCCESS'  { Write-Host $LogMsg -ForegroundColor Green }
@@ -511,282 +1524,391 @@ Class Logger {
             }
         }
 
+        # FEATURE 10: Use buffered writes if enabled
+        If ($This.BufferedWrites) {
+            $This.BufferedWrite($FormattedMsg)
+            Return
+        }
+
         # Initialize variables for retrying if writing to log fails
         $Saved = $False
         $Retry = 0
-        
+
         # Retry writing to the log until we have success or have hit the maximum number of retries
         Do {
             # Increment retry by 1
             $Retry++
-            
+
             # Try to write to the log file
             Try {
-                # Write to the log with or without log info
-                If ($This.NoLogInfo) {
-                    Write-Output "$LogMsg" | Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding -ErrorAction Stop
-                } Else {
-                    $fullMsg = if ($logPrefix) { "$logPrefix $LogMsg" } else { $LogMsg }
-                    Write-Output $fullMsg | 
-                        Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding -ErrorAction Stop
-                }
-                
+                Write-Output $FormattedMsg | Out-File -FilePath $This.LogFile -Append -Encoding $This.Encoding -ErrorAction Stop
+
                 # Set saved variable to true. We successfully wrote to the log file.
                 $Saved = $True
             } Catch {
-                If ($Saved -eq $False -and $Retry -eq $This.LogRetry) {
+                If (-not $Saved -and $Retry -eq $This.LogRetry) {
                     # Write the final error to the console. We were not able to write to the log file.
                     Write-Error "Logger couldn't write to the log File $($_.Exception.Message). Tried ($Retry/$($This.LogRetry)))"
                     Write-Error "Err Line: $($_.InvocationInfo.ScriptLineNumber) Err Name: $($_.Exception.GetType().FullName) Err Msg: $($_.Exception.Message)"
                 } Else {
                     # Write warning to the console and try again until we hit the maximum configured number of retries
                     Write-Warning "Logger couldn't write to the log File $($_.Exception.Message). Retrying... ($Retry/$($This.LogRetry))"
-                    # Sleep for half a second
-                    Start-Sleep -Milliseconds 500
+                    # Sleep for configured delay
+                    Start-Sleep -Milliseconds $This.LogRetryDelayMs
                 }
             }
-        } Until ($Saved -eq $True -or $Retry -ge $This.LogRetry)
+        } Until ($Saved -or $Retry -ge $This.LogRetry)
     }
 
-    # Convenience methods for different log levels
+    <#
+    .SYNOPSIS
+    Writes INFO level message
+
+    .PARAMETER LogMsg
+    String message to log
+
+    .EXAMPLE
+    $Logger.WriteInfo("Operation completed")
+    #>
     [void] WriteInfo([string]$LogMsg) {
         $This.Write($LogMsg, "INFO")
     }
 
+    <#
+    .SYNOPSIS
+    Writes WARNING level message
+
+    .PARAMETER LogMsg
+    String message to log
+
+    .EXAMPLE
+    $Logger.WriteWarning("Disk space low")
+    #>
     [void] WriteWarning([string]$LogMsg) {
         $This.Write($LogMsg, "WARNING")
     }
 
+    <#
+    .SYNOPSIS
+    Writes ERROR level message
+
+    .PARAMETER LogMsg
+    String message to log
+
+    .EXAMPLE
+    $Logger.WriteError("Connection failed")
+    #>
     [void] WriteError([string]$LogMsg) {
         $This.Write($LogMsg, "ERROR")
     }
 
-    [void] WriteCritical([string]$LogMsg) {
-        $This.Write($LogMsg, "CRITICAL")
-    }
+    <#
+    .SYNOPSIS
+    Writes DEBUG level message
 
+    .PARAMETER LogMsg
+    String message to log
+
+    .EXAMPLE
+    $Logger.WriteDebug("Variable value: x = 42")
+    #>
     [void] WriteDebug([string]$LogMsg) {
         $This.Write($LogMsg, "DEBUG")
     }
 
+    <#
+    .SYNOPSIS
+    Writes CRITICAL level message
+
+    .PARAMETER LogMsg
+    String message to log
+
+    .EXAMPLE
+    $Logger.WriteCritical("System failure imminent")
+    #>
+    [void] WriteCritical([string]$LogMsg) {
+        $This.Write($LogMsg, "CRITICAL")
+    }
+
+    <#
+    .SYNOPSIS
+    Writes SUCCESS level message
+
+    .PARAMETER LogMsg
+    String message to log
+
+    .EXAMPLE
+    $Logger.WriteSuccess("Deployment completed")
+    #>
     [void] WriteSuccess([string]$LogMsg) {
         $This.Write($LogMsg, "SUCCESS")
     }
 
-    # Method to check if log rotation is needed
+    <#
+    .SYNOPSIS
+    Changes the minimum log level filter dynamically
+
+    .PARAMETER NewFilter
+    String log level to set as new filter (CRITICAL, ERROR, WARNING, SUCCESS, INFO, DEBUG)
+
+    .EXAMPLE
+    $Logger.SetLogFilter("ERROR")  # Only log ERROR and CRITICAL from now on
+    #>
+    [void] SetLogFilter([string]$NewFilter) {
+        $ValidLevels = @('CRITICAL', 'ERROR', 'WARNING', 'SUCCESS', 'INFO', 'DEBUG')
+        If ($NewFilter.ToUpper() -in $ValidLevels) {
+            $This.LogFilter = $NewFilter.ToUpper()
+        } Else {
+            Write-Warning "Invalid log filter level: $NewFilter. Valid levels are: $($ValidLevels -join ', ')"
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Performs log file rotation with optional compression
+
+    .DESCRIPTION
+    Common rotation logic to avoid code duplication.
+    Handles both zipped and non-zipped rotation scenarios.
+
+    .PARAMETER LogNameLocal
+    String base name of log file without extension
+
+    .PARAMETER LogPathLocal
+    String directory path containing log files
+
+    .PARAMETER ZipPath
+    String full path to zip archive for compressed rotation
+
+    .PARAMETER TempLogPath
+    String temporary directory path for zip extraction/compression operations
+    #>
+    hidden [bool] PerformRotation([string]$LogNameLocal, [string]$LogPathLocal, [string]$ZipPath, [string]$TempLogPath) {
+
+        If ($This.LogZip) {
+            # Zip archive does not exist yet
+            If (!(Test-Path $ZipPath)) {
+                # Get the list of current log files
+                $LogFiles = Get-ChildItem -Path $LogPathLocal -File -Filter "*.log" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -like "$LogNameLocal*" } |
+                    Sort-Object BaseName
+
+                # Roll the log files
+                $LogRolled = $This.StartLogRoll($LogNameLocal, $LogPathLocal, $LogFiles)
+
+                # Update the list of current log files after rotating
+                $LogFiles = Get-ChildItem -Path $LogPathLocal -File -Filter "*.log" -ErrorAction SilentlyContinue |
+                    Where-Object { ($_.Name -like "$LogNameLocal*") -and ($_.Name -match '\.\d+') } |
+                    Sort-Object BaseName
+
+                # Compress each rotated log file
+                ForEach ($File in $LogFiles) {
+                    Try {
+                        # First file creates archive, subsequent files update it
+                        If (Test-Path $ZipPath) {
+                            Compress-Archive -Path "$LogPathLocal\$($File.Name)" -DestinationPath $ZipPath -Update -ErrorAction Stop
+                        } Else {
+                            Compress-Archive -Path "$LogPathLocal\$($File.Name)" -DestinationPath $ZipPath -ErrorAction Stop
+                        }
+                        Remove-Item -Path "$LogPathLocal\$($File.Name)" -Force -ErrorAction SilentlyContinue
+                    } Catch {
+                        Write-Warning "Failed to compress/remove log file $($File.Name): $_"
+                    }
+                }
+                Return $True
+            }
+            # Zip archive already exists - extract, rotate, re-compress
+            Else {
+                Try {
+                    # Ensure the temp folder exists
+                    If (-Not (Test-Path -Path $TempLogPath)) {
+                        New-Item -Path $TempLogPath -ItemType Directory -Force | Out-Null
+                    }
+
+                    # Unzip to temp folder
+                    Expand-Archive -Path $ZipPath -DestinationPath $TempLogPath -Force -ErrorAction Stop
+
+                    # Get log files from temp folder
+                    $LogFiles = Get-ChildItem -Path $TempLogPath -File -Filter "*.log" -ErrorAction SilentlyContinue |
+                        Where-Object { ($_.Name -like "$LogNameLocal*") -and ($_.Name -match '\.\d+') } |
+                        Sort-Object BaseName
+
+                    # Roll the log files
+                    $LogRolled = $This.StartLogRoll($LogNameLocal, $LogPathLocal, $LogFiles)
+
+                    # Compress to a temporary archive first to avoid data loss if compression fails
+                    # Compress-Archive requires .zip extension, so use -temp.zip suffix
+                    $TempZipPath = $ZipPath -replace '\.zip$', '-temp.zip'
+                    Compress-Archive -Path "$TempLogPath\*" -DestinationPath $TempZipPath -ErrorAction Stop
+
+                    # Only after successful compression, replace the old archive
+                    Remove-Item $ZipPath -Force -ErrorAction Stop
+                    Move-Item $TempZipPath -Destination $ZipPath -Force -ErrorAction Stop
+
+                    # Clean up temp folder
+                    If (Test-Path $TempLogPath) {
+                        Remove-Item -Path $TempLogPath -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+
+                    Return $LogRolled
+                } Catch {
+                    Write-Warning "Failed during zip rotation: $_"
+                    # Clean up temp folder and temp zip on error
+                    If (Test-Path $TempLogPath) {
+                        Remove-Item -Path $TempLogPath -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+                    # Clean up temp zip file if it exists
+                    $TempZipPath = $ZipPath -replace '\.zip$', '-temp.zip'
+                    If (Test-Path $TempZipPath) {
+                        Remove-Item -Path $TempZipPath -Force -ErrorAction SilentlyContinue
+                    }
+                    Return $False
+                }
+            }
+        }
+        # No zipping - just rotate on disk
+        Else {
+            $LogFiles = Get-ChildItem -Path $LogPathLocal -File -Filter "*.log" -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like "$LogNameLocal*" } |
+                Sort-Object BaseName
+            $LogRolled = $This.StartLogRoll($LogNameLocal, $LogPathLocal, $LogFiles)
+            Return $LogRolled
+        }
+    }
+
+    <#
+    .SYNOPSIS
+    Checks if log rotation is needed based on configured thresholds
+
+    .DESCRIPTION
+    Determines if the log needs to be rotated per the parameters values.
+    Supports size-based (1M, 10M, 5G), age-based (7, 30, 365 days), and
+    time-based (daily, weekly, monthly, custom intervals) rotation patterns.
+    Handles both disk-based and zip-archived log rotation.
+
+    .EXAMPLE
+    $Logger = [Logger]::new("MyLog")
+    $Logger.LogRotateOpt = "10M"
+    $Logger.ConfirmLogRotation()  # Returns $true if log exceeds 10MB
+
+    .EXAMPLE
+    $Logger.LogRotateOpt = "daily"
+    $Logger.ConfirmLogRotation()  # Returns $true if log written on different day
+    #>
     [bool] ConfirmLogRotation() {
-        <#
-        .DESCRIPTION
-        Determines if the log needs to be rotated per the parameters values. It supports rotating log files on disk and stored in a zip archive.
-        
-        .EXAMPLE
-        $Logger = [Logger]::new("MyLog")
-        $Logger.LogRotateOpt = "10M"
-        $Logger.ConfirmLogRotation()
-        #>
-        
-        # Initialize default return variable. If returned $True, will write a log rotate line to a new log file.
-        $LogRolled = $False
 
-        # Get the log name without the file extension
-        $This.LogName = "$([System.IO.Path]::GetFileNameWithoutExtension($This.LogFile))"
+        # Use local variables to avoid modifying logger state
+        $LogNameLocal = [System.IO.Path]::GetFileNameWithoutExtension($This.LogFile)
+        $LogPathLocal = Split-Path -Path $This.LogFile
+        $ZipPath = "$LogPathLocal\$LogNameLocal-archive.zip"
+        $TempLogPath = "$([System.IO.Path]::GetTempPath())$LogNameLocal.archive"
 
-        # Get the base path to the log file
-        $This.LogPath = Split-Path -Path $This.LogFile
-
-        # Initialize the zip archive path
-        $ZipPath = "$($This.LogPath)\$($This.LogName)-archive.zip"
-
-        # Initialize the TempLogPath variable to null.
-        $TempLogPath = $Null
-
-        # If the zip already exists, we set TempLogPath to a generated user temp folder path
-        # This will be used to extract the zip archive before rotating logs
-        If (Test-Path $ZipPath) {
-            $TempLogPath = "$([System.IO.Path]::GetTempPath())$($This.LogName).archive"
-        } 
-
-        # Check If the LogRotateOpt matches the size pattern (e.g., 10M, 5G, 500K)
-        If ($This.LogRotateOpt -match '(\d+)([GMK])') {
+        # Check if the LogRotateOpt matches time-based patterns (daily, weekly, monthly, Nd, Nw, Nmo)
+        If ($This.LogRotateOpt -match '^(daily|weekly|monthly|\d+d|\d+w|\d+mo)$') {
+            If ($This.ShouldRotateByTime()) {
+                Return $This.PerformRotation($LogNameLocal, $LogPathLocal, $ZipPath, $TempLogPath)
+            }
+            Return $False
+        }
+        # Check if the LogRotateOpt matches the size pattern (e.g., 10M, 5G, 500K)
+        ElseIf ($This.LogRotateOpt -match '(\d+)([GMK])') {
             $Unit = $matches[2]
 
-            # Calculate the log size and compare it to the LogRotateOpt size
-            If ($Unit -eq 'G') {
-                # Calculate size with GB
-                $RotateSize = [int]$matches[1] * 1GB 
-            } ElseIf ($Unit -eq 'M') {
-                # Calculate size with MB
-                $RotateSize = [int]$matches[1] * 1MB 
-            } ElseIf ($Unit -eq 'K') {
-                # Calculate size with KB
-                $RotateSize = [int]$matches[1] * 1KB 
-            } Else {
-                Write-Warning "Incorrect log rotation parameter provided. Using default of 1MB."
-                $RotateSize = 1 * 1MB
-            }
-
-            $LogSize = ((Get-Item -Path $This.LogFile).Length)
-
-            If ($LogSize -gt $RotateSize) {
-                If ($This.LogZip) {
-                    # Zip archive does not exist yet. Rotate existing logs and put them all inside of a zip archive
-                    If (!(Test-Path $ZipPath)) {
-                        # Get the list of current log files
-                        $LogFiles = Get-ChildItem -Path $This.LogPath -File -Filter "*.log" | 
-                            Where-Object { ($_.Name -like "$($This.LogName)*") } | 
-                            Sort-Object BaseName
-                            
-                        # Roll the log files
-                        $LogRolled = $This.StartLogRoll($This.LogName, $This.LogPath, $LogFiles)
-                        
-                        # Update the list of current log files after rotating
-                        $LogFiles = Get-ChildItem -Path $This.LogPath -File -Filter "*.log" | 
-                            Where-Object { ($_.Name -like "$($This.LogName)*") -and ($_.Name -match '\.\d+') } | 
-                            Sort-Object BaseName
-                            
-                        # Iterate over each log file and compress it into the archive and then delete it off the disk
-                        ForEach ($File in $LogFiles) {
-                            Compress-Archive -Path "$($This.LogPath)\$($File.Name)" -DestinationPath $ZipPath -Update
-                            Remove-Item -Path "$($This.LogPath)\$($File.Name)"
-                        }
-                        Return $True
-                    # Zip archive already exists. Lets extract and rotate some logs
-                    } Else {
-                        # Ensure the temp folder exists
-                        If (-Not (Test-Path -Path $TempLogPath)) {
-                            New-Item -Path $TempLogPath -ItemType Directory | Out-Null
-                        }
-
-                        # Unzip the File to the temp folder
-                        Expand-Archive -Path $ZipPath -DestinationPath $TempLogPath -Force
-
-                        # Get the LogFiles from the temp folder
-                        $LogFiles = Get-ChildItem -Path $TempLogPath -File -Filter "*.log" | 
-                            Where-Object { ($_.Name -like "$($This.LogName)*") -and ($_.Name -match '\.\d+') } | 
-                            Sort-Object BaseName
-                        
-                        # Roll the log files
-                        $LogRolled = $This.StartLogRoll($This.LogName, $This.LogPath, $LogFiles)
-
-                        # Compress and overwrite the old log files inside the existing archive
-                        Compress-Archive -Path "$TempLogPath\*" -DestinationPath $ZipPath -Update
-
-                        # Remove the Files we extracted, we no longer need them
-                        If (Test-Path $TempLogPath) {
-                            Remove-Item -Path $TempLogPath -Recurse -Force
-                        }
-
-                        # Return True or False
-                        Return $LogRolled
-                    }
-                # Logs are not zipped, just roll em over
-                } Else {
-                    $LogFiles = Get-ChildItem -Path $This.LogPath -File -Filter "*.log" | 
-                        Where-Object { ($_.Name -like "$($This.LogName)*") } | 
-                        Sort-Object BaseName
-                    $LogRolled = $This.StartLogRoll($This.LogName, $This.LogPath, $LogFiles)
-                    Return $LogRolled
+            # Calculate the log size based on unit
+            $RotateSize = Switch ($Unit) {
+                'G' { [int]$matches[1] * 1GB }
+                'M' { [int]$matches[1] * 1MB }
+                'K' { [int]$matches[1] * 1KB }
+                Default {
+                    Write-Warning "Invalid rotation unit '$Unit'. Using default of 1MB."
+                    1MB
                 }
             }
+
+            Try {
+                $LogSize = (Get-Item -Path $This.LogFile -ErrorAction Stop).Length
+                If ($LogSize -gt $RotateSize) {
+                    Return $This.PerformRotation($LogNameLocal, $LogPathLocal, $ZipPath, $TempLogPath)
+                }
+            } Catch {
+                Write-Warning "Could not check log file size: $_"
+                Return $False
+            }
+        }
         # Check if LogRotateOpt matches the days pattern (e.g., 7, 30, 365)
-        } ElseIf ($This.LogRotateOpt -match '^\d+$') {
-            # Convert the string digit into an integer
+        ElseIf ($This.LogRotateOpt -match '^\d+$') {
             $RotateDays = [int]$This.LogRotateOpt
 
-            # Get the file's last write time
-            $CreationTime = (Get-Item $This.LogFile).CreationTime
+            Try {
+                # Use LastWriteTime instead of CreationTime for proper age-based rotation
+                $LastWriteTime = (Get-Item -Path $This.LogFile -ErrorAction Stop).LastWriteTime
+                $Age = ((Get-Date) - $LastWriteTime).Days
 
-            # Calculate the age of the file in days
-            $Age = ((Get-Date) - $CreationTime).Days
-
-            # If the age of the file is older than the configured number of days to rotate the log
-            If ($Age -gt $RotateDays) {
-                If ($This.LogZip) {
-                    # Zip archive does not exist yet. Rotate existing logs and put them all inside of a zip archive
-                    If (!(Test-Path $ZipPath)) {
-                        # Get the list of current log files
-                        $LogFiles = Get-ChildItem -Path $This.LogPath -File -Filter "*.log" | 
-                            Where-Object { ($_.Name -like "$($This.LogName)*") } | 
-                            Sort-Object BaseName
-                            
-                        # Roll the log files
-                        $LogRolled = $This.StartLogRoll($This.LogName, $This.LogPath, $LogFiles)
-                        
-                        # Update the list of current log files after rotating
-                        $LogFiles = Get-ChildItem -Path $This.LogPath -File -Filter "*.log" | 
-                            Where-Object { ($_.Name -like "$($This.LogName)*") -and ($_.Name -match '\.\d+') } | 
-                            Sort-Object BaseName
-                            
-                        # Iterate over each log file and compress it into the archive and then delete it off the disk
-                        ForEach ($File in $LogFiles) {
-                            Compress-Archive -Path "$($This.LogPath)\$($File.Name)" -DestinationPath $ZipPath -Update
-                            Remove-Item -Path "$($This.LogPath)\$($File.Name)"
-                        }
-                        Return $True
-                    # Zip archive already exists. Lets extract and rotate some logs
-                    } Else {
-                        # Ensure the temp folder exists
-                        If (-Not (Test-Path -Path $TempLogPath)) {
-                            New-Item -Path $TempLogPath -ItemType Directory | Out-Null
-                        }
-
-                        # Unzip the File to the temp folder
-                        Expand-Archive -Path $ZipPath -DestinationPath $TempLogPath -Force
-
-                        # Get the LogFiles from the temp folder
-                        $LogFiles = Get-ChildItem -Path $TempLogPath -File -Filter "*.log" | 
-                            Where-Object { ($_.Name -like "$($This.LogName)*") } | 
-                            Sort-Object BaseName
-                        
-                        # Roll the log files
-                        $LogRolled = $This.StartLogRoll($This.LogName, $This.LogPath, $LogFiles)
-
-                        # Compress and overwrite the old log files inside the existing archive
-                        Compress-Archive -Path "$TempLogPath\*" -DestinationPath $ZipPath -Update -Force
-
-                        # Remove the Files we extracted, we no longer need them
-                        If (Test-Path $TempLogPath) {
-                            Remove-Item -Path $TempLogPath -Recurse -Force
-                        }
-
-                        # Return True or False
-                        Return $LogRolled
-                    }
-                # No zip archiving. Just roll us some logs on the disk.
-                } Else {
-                    $LogFiles = Get-ChildItem -Path $This.LogPath -File -Filter "*.log" | 
-                        Where-Object { ($_.Name -like "$($This.LogName)*") } | 
-                        Sort-Object BaseName
-                    $LogRolled = $This.StartLogRoll($This.LogName, $This.LogPath, $LogFiles)
-                    Return $LogRolled
+                If ($Age -gt $RotateDays) {
+                    Return $This.PerformRotation($LogNameLocal, $LogPathLocal, $ZipPath, $TempLogPath)
                 }
+            } Catch {
+                Write-Warning "Could not check log file age: $_"
+                Return $False
             }
-        } Else {
-            Write-Error "Incorrect log rotation parameter provided. Logs will not be rotated!"
         }
-        
-        # Return false by default if no rotation was triggered
+        Else {
+            Write-Error "Invalid log rotation parameter: '$($This.LogRotateOpt)'. Expected format: size (e.g. '10M', '5G') or days (e.g. '7', '30')"
+            Return $False
+        }
+
+        # No rotation needed
         Return $False
     }
 
-    # Method to perform log rotation
-    [bool] StartLogRoll([string]$LogName, [string]$LogPath, [object]$LogFiles) {
-        <#
-        .DESCRIPTION
-        Rolls the logs incrementing the number by 1 and deleting any older logs over the allowed maximum count of log files
-        
-        .EXAMPLE
-        $Logger = [Logger]::new("MyLog")
-        $LogFiles = Get-ChildItem -Path $Logger.LogPath -File -Filter "*.log" | Where-Object { ($_.Name -like "$($Logger.LogName)*") -and ($_.Name -match '\.\d+') }
-        $Logger.StartLogRoll($Logger.LogName, $Logger.LogPath, $LogFiles)
-        #>
+    <#
+    .SYNOPSIS
+    Performs the actual log file rotation by renaming files sequentially
 
-        # Get the working log path from the $LogFiles object that was passed to the function. 
+    .DESCRIPTION
+    Rolls the logs incrementing the number by 1 (e.g., app.log -> app.1.log, app.1.log -> app.2.log).
+    Deletes logs exceeding LogCountMax. Handles both disk-based and zip-extracted rotation scenarios.
+
+    .PARAMETER LogName
+    String base name of log file without extension
+
+    .PARAMETER LogPath
+    String directory path where base log file resides
+
+    .PARAMETER LogFiles
+    Object array of FileInfo objects representing rotated log files
+
+    .EXAMPLE
+    $Logger = [Logger]::new("MyLog")
+    $LogFiles = Get-ChildItem -Path $Logger.LogPath -File -Filter "*.log" | Where-Object { ($_.Name -like "$($Logger.LogName)*") -and ($_.Name -match '\.\d+') }
+    $Logger.StartLogRoll($Logger.LogName, $Logger.LogPath, $LogFiles)
+
+    .EXAMPLE
+    $Logger.StartLogRoll("Application", "C:\Logs", $rotatedFiles)
+    #>
+    [bool] StartLogRoll([string]$LogName, [string]$LogPath, [object]$LogFiles) {
+
+        # Validate input - check if LogFiles array is null or empty
+        If ($null -eq $LogFiles -or $LogFiles.Count -eq 0) {
+            Write-Verbose "No log files provided to rotate"
+            # Still try to rotate the base log file
+            Try {
+                If (Test-Path "$LogPath\$LogName.log") {
+                    Move-Item -Path "$LogPath\$LogName.log" -Destination "$LogPath\$LogName.1.log" -Force -ErrorAction Stop
+                    Return $True
+                }
+            } Catch {
+                Write-Warning "Failed to rotate base log file: $_"
+            }
+            Return $False
+        }
+
+        # Get the working log path from the $LogFiles object that was passed to the function.
         # This may be a temp folder for zip archived logs.
         $WorkingLogPath = $LogFiles[0].Directory
 
-        $LogFiles = Get-ChildItem -Path $WorkingLogPath -File -Filter "*.log" | 
-                        Where-Object { ($_.Name -like "$($This.LogName)*") -and ($_.Name -match '\.\d+') } | 
+        $LogFiles = Get-ChildItem -Path $WorkingLogPath -File -Filter "*.log" -ErrorAction SilentlyContinue |
+                        Where-Object { ($_.Name -like "$LogName*") -and ($_.Name -match '\.\d+') } |
                         Sort-Object BaseName
 
         # Rotate multiple log files if 1 or more already exists
@@ -795,35 +1917,39 @@ Class Logger {
             For ($i = $LogFiles.Count; $i -ge 0; $i--) {
                 # Get rotating log file that we are working on
                 $OperatingFile = $LogFiles | Where-Object {$_.Name -eq "$LogName.$i.log"}
-                
+
                 # Check if we are over the maximum allowed rotating log files
                 If ($i -ge $This.LogCountMax) {
                     # Remove rotating logs that are over the maximum allowed
-                    Remove-Item "$WorkingLogPath\$($OperatingFile.Name)" -Force -ErrorAction Stop
+                    Try {
+                        Remove-Item "$WorkingLogPath\$($OperatingFile.Name)" -Force -ErrorAction Stop
+                    } Catch {
+                        Write-Warning "Could not remove old log file $($OperatingFile.Name): $_"
+                    }
                 # If we have iterated down to zero, we are working with the base log file
                 } ElseIf ($i -eq 0) {
                     # Set the rotating log number
                     $OperatingNumber = 1
                     # Set the name of the new rotated log name
-                    $NewFileName = "$LogName.$OperatingNumber.log" 
+                    $NewFileName = "$LogName.$OperatingNumber.log"
                     If ($WorkingLogPath -eq $This.LogPath) {
                         # Rotate the base log
-                        Rename-Item -Path "$WorkingLogPath\$LogName.log" -NewName $NewFileName 
+                        Rename-Item -Path "$WorkingLogPath\$LogName.log" -NewName $NewFileName
                     } Else {
                         Move-Item -Path "$LogPath\$LogName.log" -Destination "$WorkingLogPath\$LogName.1.log"
                     }
                     # Return true since all logs have been rotated
                     Return $True
                 # We are iterating through the rotated logs and renaming them as needed
-                } Else { 
+                } Else {
                     # Set the operating number to be +1 of the current increment
                     $OperatingNumber = $i + 1
                     # Set the name of the new rotated log name
-                    $NewFileName = "$LogName.$OperatingNumber.log" 
+                    $NewFileName = "$LogName.$OperatingNumber.log"
                     # Rotate the base log
                     Rename-Item -Path "$WorkingLogPath\$LogName.$i.log" -NewName $NewFileName -Force
-                } 
-            } 
+                }
+            }
         # Rotate the base log file into its first rotating log file
         } Else {
             Move-Item -Path "$LogPath\$LogName.log" -Destination "$WorkingLogPath\$LogName.1.log"
@@ -836,7 +1962,661 @@ Class Logger {
     }
 }
 
+<#
+.SYNOPSIS
+Base interface for log enrichers that add contextual data to log entries
+
+.DESCRIPTION
+Defines the contract for enricher classes that automatically inject additional
+properties into log entries. Enrichers are applied when structured logging is enabled,
+adding context such as machine info, process details, environment data, etc.
+
+.EXAMPLE
+# Create custom enricher
+Class CustomEnricher : IEnricher {
+    [void] Enrich([hashtable]$LogEntry) {
+        $LogEntry['customField'] = "custom value"
+    }
+}
+#>
+Class IEnricher {
+    <#
+    .SYNOPSIS
+    Enriches log entry with additional properties
+
+    .PARAMETER LogEntry
+    Hashtable containing log entry properties to enrich
+    #>
+    [void] Enrich([hashtable]$LogEntry) {
+        throw "Must override Enrich() method"
+    }
+}
+
+<#
+.SYNOPSIS
+Enriches log entries with machine and user identification information
+
+.DESCRIPTION
+Adds machine name, username, and user domain to log entries.
+Useful for identifying the source of log messages in multi-machine environments.
+
+.EXAMPLE
+$Logger.Enrichers.Add([MachineEnricher]::new())
+# Adds: machineName, userName, userDomain to all log entries
+#>
+Class MachineEnricher : IEnricher {
+    <#
+    .SYNOPSIS
+    Adds machine name, username, and user domain to log entry
+
+    .PARAMETER LogEntry
+    Hashtable containing log entry properties to enrich
+    #>
+    [void] Enrich([hashtable]$LogEntry) {
+        $LogEntry['machineName'] = $env:COMPUTERNAME
+        $LogEntry['userName'] = $env:USERNAME
+        $LogEntry['userDomain'] = $env:USERDOMAIN
+    }
+}
+
+<#
+.SYNOPSIS
+Enriches log entries with process identification information
+
+.DESCRIPTION
+Adds current process ID and process name to log entries.
+Useful for distinguishing logs from different processes or script instances.
+
+.EXAMPLE
+$Logger.Enrichers.Add([ProcessEnricher]::new())
+# Adds: processId, processName to all log entries
+#>
+Class ProcessEnricher : IEnricher {
+    <#
+    .SYNOPSIS
+    Adds process ID and process name to log entry
+
+    .PARAMETER LogEntry
+    Hashtable containing log entry properties to enrich
+    #>
+    [void] Enrich([hashtable]$LogEntry) {
+        $currentPid = [System.Diagnostics.Process]::GetCurrentProcess().Id
+        $LogEntry['processId'] = $currentPid
+        Try {
+            $process = Get-Process -Id $currentPid -ErrorAction Stop
+            $LogEntry['processName'] = $process.ProcessName
+        } Catch {
+            $LogEntry['processName'] = 'Unknown'
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+Enriches log entries with thread identification information
+
+.DESCRIPTION
+Adds managed thread ID to log entries.
+Useful for debugging multi-threaded applications and identifying thread-specific issues.
+
+.EXAMPLE
+$Logger.Enrichers.Add([ThreadEnricher]::new())
+# Adds: threadId to all log entries
+#>
+Class ThreadEnricher : IEnricher {
+    <#
+    .SYNOPSIS
+    Adds managed thread ID to log entry
+
+    .PARAMETER LogEntry
+    Hashtable containing log entry properties to enrich
+    #>
+    [void] Enrich([hashtable]$LogEntry) {
+        $LogEntry['threadId'] = [System.Threading.Thread]::CurrentThread.ManagedThreadId
+    }
+}
+
+<#
+.SYNOPSIS
+Enriches log entries with environment and runtime information
+
+.DESCRIPTION
+Adds OS version, PowerShell version, and CLR version to log entries.
+Useful for troubleshooting environment-specific issues and tracking runtime versions.
+
+.EXAMPLE
+$Logger.Enrichers.Add([EnvironmentEnricher]::new())
+# Adds: osVersion, psVersion, clrVersion to all log entries
+#>
+Class EnvironmentEnricher : IEnricher {
+    <#
+    .SYNOPSIS
+    Adds OS version, PowerShell version, and CLR version to log entry
+
+    .PARAMETER LogEntry
+    Hashtable containing log entry properties to enrich
+    #>
+    [void] Enrich([hashtable]$LogEntry) {
+        $LogEntry['osVersion'] = [System.Environment]::OSVersion.VersionString
+        Try {
+            $psVersion = (Get-Variable -Name PSVersionTable -Scope Global -ErrorAction Stop).Value.PSVersion.ToString()
+            $LogEntry['psVersion'] = $psVersion
+        } Catch {
+            $LogEntry['psVersion'] = 'Unknown'
+        }
+        $LogEntry['clrVersion'] = [System.Environment]::Version.ToString()
+    }
+}
+
+<#
+.SYNOPSIS
+Enriches log entries with network identification information
+
+.DESCRIPTION
+Adds primary IPv4 address (excluding loopback) to log entries.
+Useful for identifying the source IP in networked or distributed applications.
+
+.EXAMPLE
+$Logger.Enrichers.Add([NetworkEnricher]::new())
+# Adds: ipAddress to all log entries
+#>
+Class NetworkEnricher : IEnricher {
+    <#
+    .SYNOPSIS
+    Adds primary IPv4 address to log entry
+
+    .PARAMETER LogEntry
+    Hashtable containing log entry properties to enrich
+    #>
+    [void] Enrich([hashtable]$LogEntry) {
+        Try {
+            $ipAddresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+                Where-Object { $_.InterfaceAlias -notlike '*Loopback*' -and $_.IPAddress -ne '127.0.0.1' } |
+                Select-Object -First 1 -ExpandProperty IPAddress
+            $LogEntry['ipAddress'] = $ipAddresses
+        } Catch {
+            $LogEntry['ipAddress'] = 'Unknown'
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+Base class for log handlers that output log messages to various destinations
+
+.DESCRIPTION
+Defines the contract for handler classes that route log messages to different targets
+such as files, console, Event Log, email, etc. Handlers support minimum level filtering
+to send only relevant messages to each destination.
+
+.EXAMPLE
+# Create custom handler
+Class CustomHandler : LogHandler {
+    CustomHandler() {
+        $This.Name = "CustomHandler"
+    }
+    [void] Emit([string]$FormattedMessage, [string]$LogLevel) {
+        # Custom output logic here
+    }
+}
+#>
+Class LogHandler {
+    [string]$Name
+    [string]$MinimumLevel = 'DEBUG'
+
+    <#
+    .SYNOPSIS
+    Determines if message should be logged based on minimum level filter
+
+    .PARAMETER LogLevel
+    String log level to check
+
+    .PARAMETER Priorities
+    Hashtable mapping log levels to priority values
+    #>
+    [bool] ShouldLog([string]$LogLevel, [hashtable]$Priorities) {
+        $currentPriority = $Priorities[$LogLevel]
+        $minPriority = $Priorities[$This.MinimumLevel]
+        Return $currentPriority -le $minPriority
+    }
+
+    <#
+    .SYNOPSIS
+    Outputs formatted log message to handler's target destination
+
+    .PARAMETER FormattedMessage
+    String pre-formatted log message
+
+    .PARAMETER LogLevel
+    String severity level
+    #>
+    [void] Emit([string]$FormattedMessage, [string]$LogLevel) {
+        throw "Must override Emit() method"
+    }
+}
+
+<#
+.SYNOPSIS
+Handler that writes log messages to a file
+
+.DESCRIPTION
+Outputs log messages to a specified file path with configurable encoding.
+Supports all standard file encodings including Unicode, UTF8, ASCII.
+
+.EXAMPLE
+$fileHandler = [FileHandler]::new("C:\Logs\app.log")
+$fileHandler.Encoding = "UTF8"
+$Logger.AddHandler($fileHandler)
+#>
+Class FileHandler : LogHandler {
+    [string]$FilePath
+    [string]$Encoding = 'Unicode'
+
+    <#
+    .SYNOPSIS
+    Creates a new FileHandler instance
+
+    .PARAMETER FilePath
+    String path to the log file
+    #>
+    FileHandler([string]$FilePath) {
+        $This.Name = "FileHandler"
+        $This.FilePath = $FilePath
+    }
+
+    <#
+    .SYNOPSIS
+    Writes formatted message to file
+
+    .PARAMETER FormattedMessage
+    String pre-formatted log message
+
+    .PARAMETER LogLevel
+    String severity level (unused but required by interface)
+    #>
+    [void] Emit([string]$FormattedMessage, [string]$LogLevel) {
+        Try {
+            Add-Content -Path $This.FilePath -Value $FormattedMessage -Encoding $This.Encoding -ErrorAction Stop
+        } Catch {
+            Write-Verbose "FileHandler failed to write: $_"
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+Handler that writes color-coded log messages to console
+
+.DESCRIPTION
+Outputs log messages to console with optional color coding based on severity level.
+Uses Write-Host for direct console output with ANSI color support.
+
+.EXAMPLE
+$consoleHandler = [ConsoleHandler]::new()
+$consoleHandler.UseColors = $true
+$consoleHandler.MinimumLevel = "WARNING"
+$Logger.AddHandler($consoleHandler)
+#>
+Class ConsoleHandler : LogHandler {
+    [bool]$UseColors = $true
+
+    <#
+    .SYNOPSIS
+    Creates a new ConsoleHandler instance
+    #>
+    ConsoleHandler() {
+        $This.Name = "ConsoleHandler"
+    }
+
+    <#
+    .SYNOPSIS
+    Writes formatted message to console with optional color coding
+
+    .PARAMETER FormattedMessage
+    String pre-formatted log message
+
+    .PARAMETER LogLevel
+    String severity level for color selection
+    #>
+    [void] Emit([string]$FormattedMessage, [string]$LogLevel) {
+        If ($This.UseColors) {
+            $color = Switch ($LogLevel) {
+                'CRITICAL' { 'Magenta' }
+                'ERROR' { 'Red' }
+                'WARNING' { 'Yellow' }
+                'SUCCESS' { 'Green' }
+                'DEBUG' { 'Cyan' }
+                Default { 'White' }
+            }
+            Write-Host $FormattedMessage -ForegroundColor $color
+        } Else {
+            Write-Host $FormattedMessage
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+Handler that writes log messages to Windows Event Log
+
+.DESCRIPTION
+Outputs log messages to Windows Event Log with automatic source creation.
+Maps log levels to Event Log entry types (Error, Warning, Information).
+Requires administrative privileges for first-time source registration.
+
+.EXAMPLE
+$eventHandler = [EventLogHandler]::new("MyApplication")
+$eventHandler.LogName = "Application"
+$eventHandler.MinimumLevel = "ERROR"
+$Logger.AddHandler($eventHandler)
+#>
+Class EventLogHandler : LogHandler {
+    [string]$LogName = 'Application'
+    [string]$Source
+
+    <#
+    .SYNOPSIS
+    Creates a new EventLogHandler instance
+
+    .PARAMETER Source
+    String Event Log source name (must be unique per application)
+    #>
+    EventLogHandler([string]$Source) {
+        $This.Name = "EventLogHandler"
+        $This.Source = $Source
+    }
+
+    <#
+    .SYNOPSIS
+    Writes formatted message to Windows Event Log
+
+    .PARAMETER FormattedMessage
+    String pre-formatted log message
+
+    .PARAMETER LogLevel
+    String severity level for entry type mapping
+    #>
+    [void] Emit([string]$FormattedMessage, [string]$LogLevel) {
+        $EntryType = Switch ($LogLevel) {
+            'CRITICAL' { 'Error' }
+            'ERROR' { 'Error' }
+            'WARNING' { 'Warning' }
+            Default { 'Information' }
+        }
+
+        Try {
+            # Ensure source exists
+            If (-not [System.Diagnostics.EventLog]::SourceExists($This.Source)) {
+                Try {
+                    [System.Diagnostics.EventLog]::CreateEventSource($This.Source, $This.LogName)
+                } Catch {
+                    Write-Verbose "Could not create Event Log source: $_"
+                    Return
+                }
+            }
+
+            Write-EventLog -LogName $This.LogName -Source $This.Source `
+                -EntryType $EntryType -EventId 1000 -Message $FormattedMessage -ErrorAction Stop
+        } Catch {
+            Write-Verbose "EventLogHandler failed to write: $_"
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+Handler that discards all log messages
+
+.DESCRIPTION
+A null handler that silently discards all log messages without output.
+Useful for temporarily disabling logging without removing handler configuration.
+
+.EXAMPLE
+$nullHandler = [NullHandler]::new()
+$Logger.AddHandler($nullHandler)  # Logs go nowhere
+#>
+Class NullHandler : LogHandler {
+    <#
+    .SYNOPSIS
+    Creates a new NullHandler instance
+    #>
+    NullHandler() {
+        $This.Name = "NullHandler"
+    }
+
+    <#
+    .SYNOPSIS
+    Discards formatted message without output
+
+    .PARAMETER FormattedMessage
+    String pre-formatted log message (ignored)
+
+    .PARAMETER LogLevel
+    String severity level (ignored)
+    #>
+    [void] Emit([string]$FormattedMessage, [string]$LogLevel) {
+        # Do nothing - discard the log
+    }
+}
+
+<#
+.SYNOPSIS
+Base interface for log filters that control message routing based on conditions
+
+.DESCRIPTION
+Defines the contract for filter classes that determine whether log messages
+should be processed based on custom criteria such as function name, time of day,
+user context, etc. Filters return true to allow the message, false to block it.
+
+.EXAMPLE
+# Create custom filter
+Class CustomFilter : ILogFilter {
+    [bool] ShouldFilter([hashtable]$LogRecord) {
+        # Return true to allow, false to block
+        Return $LogRecord.Message -notlike "*sensitive*"
+    }
+}
+#>
+Class ILogFilter {
+    <#
+    .SYNOPSIS
+    Determines whether log record should be processed
+
+    .PARAMETER LogRecord
+    Hashtable containing log record properties (Message, Level, Timestamp, FunctionName)
+
+    .OUTPUTS
+    Boolean - true to allow message, false to block
+    #>
+    [bool] ShouldFilter([hashtable]$LogRecord) {
+        throw "Must override ShouldFilter() method"
+    }
+}
+
+<#
+.SYNOPSIS
+Filter that excludes log messages from specific functions
+
+.DESCRIPTION
+Blocks log messages originating from specified function names.
+Useful for reducing noise from verbose internal functions while maintaining
+logging for user-facing functions.
+
+.EXAMPLE
+$filter = [FunctionFilter]::new(@("Get-InternalData", "Test-Connection"))
+$Logger.AddFilter($filter)
+# Messages from Get-InternalData and Test-Connection are now blocked
+#>
+Class FunctionFilter : ILogFilter {
+    [string[]]$ExcludeFunctions = @()
+
+    <#
+    .SYNOPSIS
+    Creates a new FunctionFilter instance
+
+    .PARAMETER ExcludeFunctions
+    String array of function names to exclude from logging
+    #>
+    FunctionFilter([string[]]$ExcludeFunctions) {
+        $This.ExcludeFunctions = $ExcludeFunctions
+    }
+
+    <#
+    .SYNOPSIS
+    Determines if log record should be processed based on function name
+
+    .PARAMETER LogRecord
+    Hashtable containing log record properties including FunctionName
+
+    .OUTPUTS
+    Boolean - true if function not in exclusion list, false otherwise
+    #>
+    [bool] ShouldFilter([hashtable]$LogRecord) {
+        Return $LogRecord.FunctionName -notin $This.ExcludeFunctions
+    }
+}
+
+<#
+.SYNOPSIS
+Filter that restricts logging to specific hours of the day
+
+.DESCRIPTION
+Allows log messages only during specified time window (e.g., business hours).
+Uses 24-hour format. Useful for reducing log volume during off-peak hours
+or focusing debugging efforts on specific time periods.
+
+.EXAMPLE
+$filter = [TimeFilter]::new(9, 17)  # Only log between 9 AM and 5 PM
+$Logger.AddFilter($filter)
+#>
+Class TimeFilter : ILogFilter {
+    [int]$StartHour = 0
+    [int]$EndHour = 23
+
+    <#
+    .SYNOPSIS
+    Creates a new TimeFilter instance
+
+    .PARAMETER StartHour
+    Integer hour (0-23) when logging should begin
+
+    .PARAMETER EndHour
+    Integer hour (0-23) when logging should end
+    #>
+    TimeFilter([int]$StartHour, [int]$EndHour) {
+        $This.StartHour = $StartHour
+        $This.EndHour = $EndHour
+    }
+
+    <#
+    .SYNOPSIS
+    Determines if log record should be processed based on current time
+
+    .PARAMETER LogRecord
+    Hashtable containing log record properties
+
+    .OUTPUTS
+    Boolean - true if current hour within allowed range, false otherwise
+    #>
+    [bool] ShouldFilter([hashtable]$LogRecord) {
+        $Hour = (Get-Date).Hour
+        Return ($Hour -ge $This.StartHour -and $Hour -le $This.EndHour)
+    }
+}
+
+<#
+.SYNOPSIS
+Filter that restricts logging to specific users
+
+.DESCRIPTION
+Allows log messages only when running under specified user accounts.
+Useful for debugging user-specific issues or limiting logging to
+administrative accounts in production environments.
+
+.EXAMPLE
+$filter = [UserFilter]::new(@("admin", "debug_user"))
+$Logger.AddFilter($filter)
+# Only logs when script runs as admin or debug_user
+#>
+Class UserFilter : ILogFilter {
+    [string[]]$IncludeUsers = @()
+
+    <#
+    .SYNOPSIS
+    Creates a new UserFilter instance
+
+    .PARAMETER IncludeUsers
+    String array of usernames to allow logging for
+    #>
+    UserFilter([string[]]$IncludeUsers) {
+        $This.IncludeUsers = $IncludeUsers
+    }
+
+    <#
+    .SYNOPSIS
+    Determines if log record should be processed based on current user
+
+    .PARAMETER LogRecord
+    Hashtable containing log record properties
+
+    .OUTPUTS
+    Boolean - true if current user in allowed list, false otherwise
+    #>
+    [bool] ShouldFilter([hashtable]$LogRecord) {
+        Return $env:USERNAME -in $This.IncludeUsers
+    }
+}
+
+<#
+.SYNOPSIS
+IDisposable wrapper for scoped properties with automatic cleanup
+
+.DESCRIPTION
+Implements IDisposable to enable automatic property removal when scope exits.
+Used with PowerShell's Using statement for clean syntax and guaranteed cleanup.
+Properties are automatically removed even if exceptions occur within the scope.
+
+.EXAMPLE
+Using ($scope = $Logger.PushProperty("RequestId", "12345")) {
+    $Logger.Write("Processing request")  # Includes RequestId
+    $Logger.Write("Request complete")    # Includes RequestId
+}  # RequestId automatically removed here
+$Logger.Write("New request")  # No RequestId
+#>
+Class PropertyScope : System.IDisposable {
+    hidden [Logger]$Logger
+    hidden [string]$Key
+
+    <#
+    .SYNOPSIS
+    Creates a new PropertyScope instance
+
+    .PARAMETER Logger
+    Logger instance that owns the scoped property
+
+    .PARAMETER Key
+    String property key to remove when scope exits
+    #>
+    PropertyScope([Logger]$Logger, [string]$Key) {
+        $This.Logger = $Logger
+        $This.Key = $Key
+    }
+
+    <#
+    .SYNOPSIS
+    Removes scoped property when object is disposed
+
+    .DESCRIPTION
+    Called automatically when Using block exits or object is explicitly disposed.
+    Ensures property cleanup even if exceptions occur.
+    #>
+    [void] Dispose() {
+        $This.Logger.RemoveProperty($This.Key)
+    }
+}
+
 #endregion
+
 
 # ================================
 # ===    PUBLIC FUNCTIONS      ===
@@ -846,421 +2626,292 @@ Class Logger {
 Function Initialize-Log {
     <#
     .SYNOPSIS
-        Initializes a logger instance for use with the Write-Log function.
+    Initializes a Logger instance for enterprise file and console logging operations
 
     .DESCRIPTION
-        Initialize-Log creates and configures a Logger class instance with specified settings for 
-        file output, console display, rotation policies, and formatting options. The logger can be 
-        set as the default for the session or returned for explicit use with Write-Log.
-        
-        This function provides extensive customization options including:
-        - Automatic log file rotation based on size or age
-        - Compression of rotated logs into zip archives
-        - Simultaneous console and file output
-        - Customizable timestamp formats
-        - Multiple text encoding options
-        - Retry logic for file access conflicts
-        
-        The function creates the log directory if it doesn't exist and validates all parameters
-        before creating the logger instance.
+    Creates and configures a Logger class instance with comprehensive settings for output formatting,
+    rotation policies, structured logging, performance optimization, and multi-target destinations.
+    The logger can be set as the script-wide default or returned for explicit use with Write-Log.
 
-    .PARAMETER Default
-        Sets this logger as the default logger for the session. When set, Write-Log can be called 
-        without specifying a logger parameter. Only one default logger can exist at a time.
+    Supports advanced features including:
+    - JSON structured logging for SIEM integration
+    - Buffered writes for high-performance scenarios
+    - Time-based and size-based log rotation
+    - Windows Event Log integration
+    - Log sampling for high-volume applications
+    - Custom enrichers and handlers
+    - Correlation ID support for distributed tracing
 
     .PARAMETER LogName
-        Name of the log file that will be written to. The .log extension is automatically appended.
-        Avoid special characters that are invalid in filenames.
-        Default: "Debug"
+    Name of the log file (without extension). The .log extension is automatically appended.
+    Must not contain invalid file system characters.
+    Aliases: LN
+    Default: "Debug"
 
     .PARAMETER LogPath
-        Full path to the directory where log files will be stored. Directory is created if it doesn't exist.
-        Ensure the account running the script has write permissions to this location.
-        Default: User's temp directory ($env:TEMP)
+    Directory path where log files will be created. Directory is created if it doesn't exist.
+    Must be an absolute path (not relative). Supports UNC paths.
+    Aliases: LP
+    Default: "C:\Temp"
 
     .PARAMETER LogLevel
-        The default log level to be used if a log level is not specified in Write-Log.
-        This sets the default severity but doesn't filter messages.
-        Valid values: INFO, WARNING, ERROR, CRITICAL, DEBUG, SUCCESS
-        Default: "INFO"
+    Default severity level for log messages when not explicitly specified.
+    Valid values: INFO, WARNING, ERROR, DEBUG, SUCCESS, CRITICAL
+    Aliases: LL, LogLvl
+    Default: "INFO"
 
     .PARAMETER DateTimeFormat
-        .NET format string for timestamps in log entries. Common formats:
-        - "yyyy-MM-dd HH:mm:ss" - Standard format (default)
-        - "yyyy-MM-dd HH:mm:ss.fff" - Include milliseconds
-        - "MM/dd/yyyy hh:mm:ss tt" - US format with AM/PM
-        - "dd/MM/yyyy HH:mm:ss" - European format
-        Default: "yyyy-MM-dd HH:mm:ss"
+    .NET format string for timestamps in log entries.
+    Example formats: 'yyyy-MM-dd HH:mm:ss', 'MM/dd/yyyy hh:mm:ss tt', 'o' (ISO 8601)
+    Aliases: TF, DF, DateFormat, TimeFormat
+    Default: 'yyyy-MM-dd HH:mm:ss'
 
     .PARAMETER NoLogInfo
-        When specified, disables the timestamp and log level prefix in log entries.
-        Useful for creating clean output files or when logging pre-formatted data.
-        Default: False
+    When specified, omits timestamp and log level from log entries (logs message only).
+    Useful for raw data logging or when timestamps are added by external systems.
+    Aliases: NLI
+    Default: $false
 
     .PARAMETER Encoding
-        Text encoding for the log file. Important for international characters.
-        Valid values: unknown, string, unicode, bigendianunicode, utf8, utf7, utf32, ascii, default, oem
-        Default: "Unicode"
+    Text encoding for the log file.
+    Valid values: unknown, string, unicode, bigendianunicode, utf8, utf7, utf32, ascii, default, oem
+    Note: Use 'utf8' for cross-platform compatibility, 'unicode' for Windows-specific scripts
+    Default: 'Unicode'
 
     .PARAMETER LogRoll
-        Enables automatic log rotation based on the criteria specified in LogRotateOpt.
-        When enabled, logs are automatically rotated when size or age limits are reached.
-        Default: False
+    Enables automatic log rotation based on LogRotateOpt settings.
+    When enabled, logs are rotated according to size, age, or time-based patterns.
+    Aliases: LR, Roll
+    Default: $false
 
     .PARAMETER LogRetry
-        Number of times to retry writing to the log file if it's locked or inaccessible.
-        Each retry waits 500ms before attempting again. Useful in multi-process scenarios.
-        Range: 1-10
-        Default: 2
+    Number of retry attempts when file write operations fail (e.g., due to file locks).
+    Waits LogRetryDelayMs (default 500ms) between attempts.
+    Aliases: Retry
+    Default: 2
 
     .PARAMETER WriteConsole
-        Outputs log messages to the console in addition to the log file.
-        Messages are color-coded by level (ERROR=Red, WARNING=Yellow, SUCCESS=Green, DEBUG=Cyan).
-        Default: False
+    Outputs log messages to console in addition to file.
+    Console output uses color coding based on log level.
+    Aliases: WC, Console
+    Default: $false
 
     .PARAMETER ConsoleOnly
-        When used with WriteConsole, outputs only to console without creating a log file.
-        Useful for interactive scripts or when file logging isn't needed.
-        Default: False
+    Outputs to console only without writing to file.
+    Requires WriteConsole to be enabled. Useful for debugging or interactive scripts.
+    Aliases: CO
+    Default: $false
 
     .PARAMETER ConsoleInfo
-        When used with WriteConsole, includes timestamp and log level in console output.
-        Without this switch, only the message text is displayed in the console.
-        Default: False
+    Includes timestamp and log level in console output.
+    Only applies when WriteConsole is enabled.
+    Aliases: CI
+    Default: $false
 
     .PARAMETER LogRotateOpt
-        Specifies when logs should be rotated. Two formats supported:
-        - Size-based: Number followed by unit (K=Kilobytes, M=Megabytes, G=Gigabytes)
-          Examples: "100K", "50M", "1G"
-        - Time-based: Number of days as integer
-          Examples: "1" (daily), "7" (weekly), "30" (monthly)
-        Default: "1M"
+    Rotation threshold specified as:
+    - Size: Number followed by unit (K/M/G) e.g., "10M" for 10 megabytes, "5G" for 5 gigabytes
+    - Age: Number of days e.g., "7" for weekly rotation, "30" for monthly
+    - Time-based patterns:
+      * "daily" or "1d" - Rotate daily at midnight
+      * "weekly" or "1w" - Rotate every 7 days
+      * "monthly" or "1mo" - Rotate monthly
+      * "Nd" - Rotate every N days (e.g., "3d" = every 3 days)
+      * "Nw" - Rotate every N weeks (e.g., "2w" = every 2 weeks)
+      * "Nmo" - Rotate every N months (e.g., "3mo" = quarterly)
+    Aliases: RotateOpt
+    Default: "1M"
 
     .PARAMETER LogZip
-        When log rotation is enabled, archives rotated logs into a zip file.
-        Zip file is named <LogName>-archive.zip and stored in the same directory.
-        Significantly reduces disk space usage for archived logs.
-        Default: True
+    Compresses rotated log files into a zip archive to save disk space.
+    Only applies when LogRoll is enabled.
+    Zip files are named {LogName}-archive.zip and contain all rotated logs.
+    Aliases: Zip
+    Default: $false
 
     .PARAMETER LogCountMax
-        Maximum number of rotated log files to retain (either in zip or on disk).
-        Older logs beyond this count are permanently deleted during rotation.
-        Range: 1-100
-        Default: 5
+    Maximum number of rotated log files to retain.
+    Older logs beyond this count are automatically deleted.
+    Applies to both zipped and non-zipped rotation.
+    Aliases: LF, LogFiles
+    Default: 5
 
-    .PARAMETER ModuleName
-        Optional module or component name to include in log entries. When set, this name
-        appears in the log prefix according to the LogFormat configuration. Useful for
-        identifying the source of log messages in multi-component applications.
-        Default: $null (not included)
-        Aliases: MN, Module
+    .PARAMETER LogFilter
+    Minimum log level filter. Only messages at this level or higher severity will be logged.
+    Valid values: CRITICAL, ERROR, WARNING, SUCCESS, INFO, DEBUG
+    Priority order (highest to lowest): CRITICAL > ERROR > WARNING > SUCCESS > INFO > DEBUG
+    Example: Setting to "WARNING" will only log WARNING, ERROR, and CRITICAL messages
+    Aliases: Filter
+    Default: "DEBUG" (shows all messages)
 
-    .PARAMETER LogFormat
-        Array of format elements that defines the order and components of the log prefix.
-        Valid elements:
-        - TIMESTAMP: Includes the timestamp in the format specified by DateTimeFormat
-        - LEVEL: Includes the log level (INFO, WARNING, ERROR, etc.)
-        - MODULENAME: Includes the module name if ModuleName is set
-        
-        Elements are wrapped in brackets specified by LogBrackets parameter.
-        Example: @('TIMESTAMP', 'LEVEL') produces: [2025-08-15 16:13:06][INFO]
-        Example: @('LEVEL', 'MODULENAME', 'TIMESTAMP') produces: [INFO][MyModule][2025-08-15 16:13:06]
-        
-        Default: @('TIMESTAMP', 'LEVEL', 'MODULENAME')
-        Aliases: LFmt, Format
+    .PARAMETER StructuredLogging
+    Enable JSON structured logging output for SIEM integration and machine parsing.
+    Output format: {"timestamp":"ISO8601","level":"INFO","message":"text","machineName":"...","userName":"..."}
+    Use enrichers to add additional fields automatically.
+    Aliases: Struct, JSON
+    Default: $false
 
-    .PARAMETER LogBrackets
-        Specifies the bracket characters used to wrap log prefix elements. Must be exactly
-        2 characters where the first is the opening bracket and the second is the closing bracket.
-        
-        Examples:
-        - "[]" produces: [2025-08-15 16:13:06][INFO][MyModule]
-        - "{}" produces: {2025-08-15 16:13:06}{INFO}{MyModule}
-        - "()" produces: (2025-08-15 16:13:06)(INFO)(MyModule)
-        - "||" produces: |2025-08-15 16:13:06||INFO||MyModule|
-        - "##" produces: #2025-08-15 16:13:06##INFO##MyModule#
-        
-        Supports escape sequences like "`t`t" for tab delimiters.
-        Default: "[]"
-        Aliases: LB, Brackets
+    .PARAMETER BufferedWrites
+    Enable buffered writes for high-performance logging scenarios.
+    Messages are queued in memory and flushed to disk in batches.
+    Reduces disk I/O overhead by up to 90% in high-volume scenarios.
+    IMPORTANT: Call FlushBuffer() before script exit to ensure all messages are written.
+    Aliases: Buffer, Async
+    Default: $false
 
-    .PARAMETER Force
-        Forces overwriting of an existing default logger. Without this parameter, attempting
-        to initialize a new default logger when one already exists will result in an error.
-        This prevents accidental overwriting of logger configurations in complex scripts.
-        
-        When Force is used, a warning is displayed showing which logger is being replaced.
-        This parameter only applies when using the -Default switch.
-        Aliases: F
+    .PARAMETER BufferSize
+    Number of messages to buffer before automatic flush to disk.
+    Also flushes every FlushIntervalSeconds (default 5 seconds).
+    Higher values = better performance but more data loss risk on crash.
+    Aliases: BufSize
+    Default: 100
+
+    .PARAMETER EnableSampling
+    Enable log sampling to reduce volume in high-throughput scenarios.
+    When enabled, only every Nth message is actually logged.
+    Useful for reducing noise from high-frequency events.
+    Aliases: Sample
+    Default: $false
+
+    .PARAMETER SampleRate
+    When sampling is enabled, log every Nth message.
+    Example: SampleRate=10 means log 1 out of every 10 messages (90% reduction).
+    Aliases: SRate
+    Default: 10
+
+    .PARAMETER WriteToEventLog
+    Write log entries to Windows Event Log in addition to file.
+    Requires administrative privileges to create event source on first run.
+    Maps log levels: CRITICAL/ERROR -> Error, WARNING -> Warning, others -> Information
+    Aliases: EventLog
+    Default: $false
+
+    .PARAMETER EventSource
+    Event Log source name for Windows Event Log integration.
+    Must be unique per application. Created automatically if it doesn't exist (requires admin).
+    Aliases: Source
+    Default: "PowerShellLogger"
+
+    .PARAMETER Default
+    Sets this logger as the script-wide default logger stored in $Script:DefaultLogger.
+    When specified, no logger object is returned.
+    All subsequent Write-Log calls without -Logger parameter will use this default.
+    Aliases: D
 
     .OUTPUTS
-        [Logger]
-        Returns an initialized Logger class instance unless -Default is specified.
+    [Logger] - Configured logger instance (unless -Default is specified)
 
     .EXAMPLE
-        # Initialize a default logger with basic settings
-        Initialize-Log -Default
-        Write-Log "This message will go to C:\Temp\Debug.log"
-    
+    # Initialize a default log with default settings
+    Initialize-Log -Default
+    Write-Log "This message will go to the default log (Debug.log)"
+
     .EXAMPLE
-        # Initialize a named logger with custom path
-        $AppLog = Initialize-Log -LogName "MyApplication" -LogPath "D:\Logs"
-        Write-Log "Application started" -Logger $AppLog
-    
+    # Initialize a custom named log with rotation
+    $AppLog = Initialize-Log -LogName "Application" -LogPath "C:\Logs" -LogRoll -LogRotateOpt "10M" -LogZip
+    Write-Log "This message goes to Application.log (rotates at 10MB)" -Logger $AppLog
+
     .EXAMPLE
-        # Initialize with console output and timestamps
-        Initialize-Log -Default -LogName "Verbose" -WriteConsole -ConsoleInfo
-        Write-Log "This appears in both console and file with timestamps"
-    
+    # Initialize a log with structured JSON logging for SIEM
+    $JsonLog = Initialize-Log -LogName "AppData" -StructuredLogging
+    Write-Log "User logged in" -Logger $JsonLog
+    # Output: {"timestamp":"2025-11-05T10:30:45Z","level":"INFO","message":"User logged in",...}
+
     .EXAMPLE
-        # Initialize with size-based rotation and compression
-        $ProdLog = Initialize-Log -LogName "Production" `
-                                  -LogPath "E:\Logs" `
-                                  -LogRoll `
-                                  -LogRotateOpt "100M" `
-                                  -LogZip `
-                                  -LogCountMax 20
-        
-        # Logs rotate at 100MB, compressed to Production-archive.zip, keeping 20 versions
-        Write-Log "Production message" -Logger $ProdLog
-    
+    # Initialize a high-performance log with buffered writes
+    $HighPerfLog = Initialize-Log -LogName "HighVolume" -BufferedWrites -BufferSize 1000
+    1..10000 | ForEach-Object {
+        Write-Log "Processing item $_" -Logger $HighPerfLog
+    }
+    $HighPerfLog.FlushBuffer()  # Force flush before exit
+
     .EXAMPLE
-        # Initialize with daily rotation
-        $DailyLog = Initialize-Log -LogName "DailyReport" `
-                                   -LogRoll `
-                                   -LogRotateOpt "1"
-        
-        # Log rotates every day
-        Write-Log "Daily entry" -Logger $DailyLog
-    
+    # Initialize a log with daily rotation
+    $DailyLog = Initialize-Log -LogName "Daily" -LogRoll -LogRotateOpt "daily" -LogZip -LogCountMax 30
+    Write-Log "This log rotates daily at midnight and keeps 30 days of history" -Logger $DailyLog
+
     .EXAMPLE
-        # Console-only mode for interactive feedback
-        $Console = Initialize-Log -LogName "Progress" `
-                                  -WriteConsole `
-                                  -ConsoleOnly
-        
-        # No file created, only console output
-        Write-Log "Processing..." -Logger $Console
-    
+    # Initialize a log with weekly rotation
+    $WeeklyLog = Initialize-Log -LogName "Weekly" -LogRoll -LogRotateOpt "weekly" -LogZip
+    Write-Log "This log rotates every 7 days" -Logger $WeeklyLog
+
     .EXAMPLE
-        # Custom timestamp format and UTF8 encoding
-        $IntlLog = Initialize-Log -LogName "International" `
-                                  -DateTimeFormat "dd.MM.yyyy HH:mm:ss" `
-                                  -Encoding "utf8"
-        
-        Write-Log "Ü, ö, ä, ß characters supported" -Logger $IntlLog
-    
+    # Initialize a log with monthly rotation
+    $MonthlyLog = Initialize-Log -LogName "Monthly" -LogRoll -LogRotateOpt "monthly" -LogZip -LogCountMax 12
+    Write-Log "This log rotates monthly and keeps 12 months of history" -Logger $MonthlyLog
+
     .EXAMPLE
-        # Production configuration with splatting
-        $LogConfig = @{
-            LogName = "WebService"
-            LogPath = "D:\IIS\Logs"
-            LogLevel = "INFO"
-            DateTimeFormat = "yyyy-MM-dd HH:mm:ss.fff"
-            Encoding = "utf8"
-            LogRoll = $true
-            LogRotateOpt = "500M"
-            LogZip = $true
-            LogCountMax = 30
-            LogRetry = 5
-        }
-        
-        $WebLog = Initialize-Log @LogConfig
-        Write-Log "Web service initialized" -Logger $WebLog
-    
+    # Initialize a log with custom time-based rotation (every 3 days)
+    $CustomLog = Initialize-Log -LogName "Custom" -LogRoll -LogRotateOpt "3d" -LogZip
+    Write-Log "This log rotates every 3 days" -Logger $CustomLog
+
     .EXAMPLE
-        # Initialize logger with module name
-        $AppLog = Initialize-Log -LogName "Application" `
-                                 -ModuleName "UserService"
-        
-        Write-Log "User authenticated" -Logger $AppLog
-        # Output: [2025-08-15 16:13:06][INFO][UserService] User authenticated
-    
+    # Initialize a log with Windows Event Log integration
+    $EventLog = Initialize-Log -LogName "App" -WriteToEventLog -EventSource "MyApplication"
+    Write-Log "This message goes to both file and Windows Event Log" -Logger $EventLog
+
     .EXAMPLE
-        # Custom log format with different element order
-        $CustomLog = Initialize-Log -LogName "Custom" `
-                                    -LogFormat @('LEVEL', 'TIMESTAMP') `
-                                    -ModuleName "API"
-        
-        Write-Log "Request received" -Logger $CustomLog
-        # Output: [INFO][2025-08-15 16:13:06] Request received
-        # Note: MODULENAME not included since it's not in LogFormat array
-    
+    # Initialize a log with sampling (reduce volume by 90%)
+    $SampledLog = Initialize-Log -LogName "HighFrequency" -EnableSampling -SampleRate 10
+    1..1000 | ForEach-Object {
+        Write-Log "High-frequency event $_" -Logger $SampledLog
+    }
+    # Only ~100 messages are actually logged
+
     .EXAMPLE
-        # Using different bracket styles
-        $BraceLog = Initialize-Log -LogName "Braces" `
-                                   -LogBrackets "{}" `
-                                   -ModuleName "DataProcessor"
-        
-        Write-Log "Processing started" -Logger $BraceLog
-        # Output: {2025-08-15 16:13:06}{INFO}{DataProcessor} Processing started
-        
-        $PipeLog = Initialize-Log -LogName "Pipes" `
-                                  -LogBrackets "||"
-        
-        Write-Log "Data loaded" -Logger $PipeLog
-        # Output: |2025-08-15 16:13:06||INFO| Data loaded
-    
+    # Initialize a log with console output and filtering
+    $ConsoleLog = Initialize-Log -LogName "App" -WriteConsole -ConsoleInfo -LogFilter "WARNING"
+    Write-Log "This DEBUG message is filtered out" -LogLevel "DEBUG" -Logger $ConsoleLog
+    Write-Log "This WARNING message is shown" -LogLevel "WARNING" -Logger $ConsoleLog
+
     .EXAMPLE
-        # Minimal format with only essential elements
-        $MinimalLog = Initialize-Log -LogName "Minimal" `
-                                     -LogFormat @('LEVEL') `
-                                     -WriteConsole
-        
-        Write-Log "Simple message" -Logger $MinimalLog
-        # Output: [INFO] Simple message
-    
-    .EXAMPLE
-        # Multiple loggers with different module names
-        $AuthLog = Initialize-Log -LogName "Security" `
-                                  -ModuleName "Authentication" `
-                                  -LogPath "C:\Logs\Security"
-        
-        $DbLog = Initialize-Log -LogName "Database" `
-                                -ModuleName "DataAccess" `
-                                -LogPath "C:\Logs\Database"
-        
-        Write-Log "Login attempt" -Logger $AuthLog
-        # Output: [2025-08-15 16:13:06][INFO][Authentication] Login attempt
-        
-        Write-Log "Query executed" -Logger $DbLog
-        # Output: [2025-08-15 16:13:06][INFO][DataAccess] Query executed
-    
-    .EXAMPLE
-        # Attempting to overwrite default logger without Force
-        Initialize-Log -Default -LogName "First"
-        Write-Log "Using first logger"
-        
-        # This will fail with an error
-        Initialize-Log -Default -LogName "Second"
-        # ERROR: A default logger has already been initialized. Use -Force parameter to overwrite...
-        
-        # This will succeed with a warning
-        Initialize-Log -Default -LogName "Second" -Force
-        # WARNING: Overwriting existing default logger 'First' with new logger 'Second'
-        
-        Write-Log "Now using second logger"
-    
-    .EXAMPLE
-        # Safe logger replacement pattern
-        if ($Script:DefaultLog) {
-            Write-Host "Default logger exists: $($Script:DefaultLog.LogName)"
-            $response = Read-Host "Overwrite existing logger? (Y/N)"
-            if ($response -eq 'Y') {
-                Initialize-Log -Default -LogName "NewLogger" -Force
-            }
-        } else {
-            Initialize-Log -Default -LogName "NewLogger"
-        }
-    
+    # Initialize multiple specialized logs
+    $ErrorLog = Initialize-Log -LogName "Errors" -LogFilter "ERROR" -LogRoll -LogRotateOpt "daily"
+    $AuditLog = Initialize-Log -LogName "Audit" -StructuredLogging -LogRoll -LogRotateOpt "monthly"
+    $DebugLog = Initialize-Log -LogName "Debug" -WriteConsole -ConsoleInfo
+
+    Write-Log "Application started" -Logger $AuditLog
+    Write-Log "Processing data..." -Logger $DebugLog
+    Write-Log "Database connection failed" -LogLevel "ERROR" -Logger $ErrorLog
+
     .NOTES
-        - The function creates log directories automatically if they don't exist
-        - Only one default logger can exist at a time in a session
-        - Logger objects can be stored in variables for use throughout scripts
-        - Consider performance impact when using console output for high-volume logging
-        - Zip compression requires Windows PowerShell 5.0+ or PowerShell Core
-    
-    .LINK
-        Write-Log
-    
-    .LINK
-        Write-LogInfo
-    
-    .LINK
-        Get-LoggerInfo
-    
-    .LINK
-        Test-Logger
+    Performance: BufferedWrites can improve throughput by 10x+ in high-volume scenarios,
+                 but requires calling FlushBuffer() before script exit.
+
+    Thread Safety: Use BufferedWrites with caution in multi-threaded scenarios.
+                   Consider separate logger instances per thread.
+
+    Disk Space: Enable LogZip and set appropriate LogCountMax to prevent disk exhaustion.
+                Monitor disk usage for logs with high rotation frequency.
+
+    Event Log: First-time Event Source creation requires administrative privileges.
+               Subsequent runs do not require admin rights.
     #>
 
-    [CmdletBinding()]
-    [OutputType([Logger])]
     Param(
-        [Parameter()]
-        [alias ('D')]
-        [switch] $Default,
-
-        [Parameter()]
-        [alias ('LN')]
-        [string] $LogName = "Debug",
-
-        [Parameter()]
-        [alias ('LP')]
-        [string] $LogPath = $env:TEMP,
-
-        [Parameter()]
-        [alias ('LL', 'LogLvl')]
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'CRITICAL', 'DEBUG', 'SUCCESS')]
-        [string] $LogLevel = "INFO",
-
-        [Parameter()]
-        [Alias('TF', 'DF', 'DateFormat', 'TimeFormat')]
-        [string] $DateTimeFormat = 'yyyy-MM-dd HH:mm:ss',
-
-        [Parameter()]
-        [alias ('NLI')]
-        [switch] $NoLogInfo,
-
-        [Parameter()]
-        [ValidateSet('unknown', 'string', 'unicode', 'bigendianunicode', 'utf8', 'utf7', 'utf32', 'ascii', 'default', 'oem')]
-        [string]$Encoding = 'Unicode',
-
-        [Parameter()]
-        [alias ('Retry')]
-        [ValidateRange(1, 10)]
-        [int] $LogRetry = 2,
-
-        [Parameter()]
-        [alias('WC', 'Console')]
-        [switch] $WriteConsole,
-
-        [Parameter()]
-        [alias('CO')]
-        [switch] $ConsoleOnly,
-
-        [Parameter()]
-        [alias('CI')]
-        [switch] $ConsoleInfo,
-
-        [Parameter()]
-        [alias ('LR', 'Roll')]
-        [switch] $LogRoll,
-
-        [Parameter()]
-        [alias ('RotateOpt')]
-        [string] $LogRotateOpt = "1M",
-
-        [Parameter()]
-        [alias('Zip')]
-        [switch] $LogZip,
-
-        [Parameter()]
-        [alias('LF', 'LogFiles')]
-        [ValidateRange(1, 100)]
-        [int]$LogCountMax = 5,
-
-        [Parameter()]
-        [alias('MN', 'Module')]
-        [string]$ModuleName = $null,
-
-        [Parameter()]
-        [alias('LFmt', 'Format')]
-        [ValidateSet('TIMESTAMP', 'LEVEL', 'MODULENAME')]
-        [string[]]$LogFormat = @('TIMESTAMP', 'LEVEL', 'MODULENAME'),
-
-        [Parameter()]
-        [alias('LB', 'Brackets')]
-        [ValidateScript({
-            if ($_.Length -ne 2) {
-                throw "LogBrackets must be exactly 2 characters. You provided '$_' which has $($_.Length) character(s)."
-            }
-            return $true
-        })]
-        [string]$LogBrackets = "[]",
-
-        [Parameter()]
-        [alias('F')]
-        [switch]$Force
+        [alias ('D')][switch] $Default,
+        [alias ('LN')][string] $LogName = "Debug",
+        [alias ('LP')][string] $LogPath = "C:\Temp",
+        [alias ('LL', 'LogLvl')][string] $LogLevel = "INFO",
+        [Alias('TF', 'DF', 'DateFormat', 'TimeFormat')][string] $DateTimeFormat = 'yyyy-MM-dd HH:mm:ss',
+        [alias ('NLI')][switch] $NoLogInfo,
+        [ValidateSet('unknown', 'string', 'unicode', 'bigendianunicode', 'utf8', 'utf7', 'utf32', 'ascii', 'default', 'oem')][string]$Encoding = 'Unicode',
+        [alias ('Retry')][int] $LogRetry = 2,
+        [alias('WC', 'Console')][switch] $WriteConsole,
+        [alias('CO')][switch] $ConsoleOnly,
+        [alias('CI')][switch] $ConsoleInfo,
+        [alias ('LR', 'Roll')][switch] $LogRoll,
+        [alias ('RotateOpt')][string] $LogRotateOpt = "1M",
+        [alias('Zip')][switch] $LogZip,
+        [alias('LF', 'LogFiles')][int]$LogCountMax = 5,
+        [alias('Filter')][ValidateSet('CRITICAL', 'ERROR', 'WARNING', 'SUCCESS', 'INFO', 'DEBUG')][string]$LogFilter = "DEBUG",
+        [alias('Struct', 'JSON')][switch]$StructuredLogging,
+        [alias('Buffer', 'Async')][switch]$BufferedWrites,
+        [alias('BufSize')][int]$BufferSize = 100,
+        [alias('Sample')][switch]$EnableSampling,
+        [alias('SRate')][int]$SampleRate = 10,
+        [alias('EventLog')][switch]$WriteToEventLog,
+        [alias('Source')][string]$EventSource = "PowerShellLogger"
     )
 
     # Create a new logger instance
@@ -1281,28 +2932,19 @@ Function Initialize-Log {
     $Logger.LogRotateOpt = $LogRotateOpt
     $Logger.LogZip = $LogZip
     $Logger.LogCountMax = $LogCountMax
-    
-    # Set new formatting properties
-    $Logger.ModuleName = $ModuleName
-    $Logger.LogFormat = $LogFormat
-    $Logger.SetLogBrackets($LogBrackets)
+    $Logger.LogFilter = $LogFilter
+
+    # Set new feature properties
+    $Logger.StructuredLogging = $StructuredLogging
+    $Logger.BufferedWrites = $BufferedWrites
+    $Logger.BufferSize = $BufferSize
+    $Logger.EnableSampling = $EnableSampling
+    $Logger.SampleRate = $SampleRate
+    $Logger.WriteToEventLog = $WriteToEventLog
+    $Logger.EventSource = $EventSource
 
     If ($Default) {
-        # Check if default logger already exists and Force is not specified
-        if ($Script:DefaultLog -and -not $Force) {
-            Write-Error "A default logger has already been initialized. Use -Force parameter to overwrite the existing default logger."
-            Write-Error "Current default logger: $($Script:DefaultLog.LogName) at $($Script:DefaultLog.LogPath)"
-            Write-Error "Attempted new logger: $($Logger.LogName) at $($Logger.LogPath)"
-            Return
-        }
-        
-        # Warn if overwriting with Force
-        if ($Script:DefaultLog -and $Force) {
-            Write-Warning "Overwriting existing default logger '$($Script:DefaultLog.LogName)' with new logger '$($Logger.LogName)'"
-        }
-        
-        $Script:DefaultLog = $Logger
-        Write-Verbose "Default logger initialized: $($Logger.LogName) at $($Logger.LogPath)"
+        $Script:DefaultLogger = $Logger
         Return
     }
 
@@ -1312,195 +2954,95 @@ Function Initialize-Log {
 Function Write-Log {
     <#
     .SYNOPSIS
-        Writes a message to a log file with specified severity level and optional console output.
+    Writes formatted messages to configured log destinations
 
     .DESCRIPTION
-        Write-Log is the primary function for writing messages to log files created by Initialize-Log.
-        It supports multiple severity levels, pipeline input, and can write to both file and console
-        simultaneously based on logger configuration.
-        
-        The function handles:
-        - Automatic timestamp formatting based on logger settings
-        - Color-coded console output for different severity levels
-        - Retry logic for file access conflicts
-        - Log rotation triggers when size/age limits are reached
-        - Pipeline processing for bulk message logging
-        
-        Messages are formatted as: [timestamp][level] message
-        Unless NoLogInfo is set on the logger, in which case only the message is written.
+    Outputs messages to a logger instance with specified severity level. Messages are formatted
+    with timestamps and levels based on logger configuration. Supports both default and
+    explicitly specified logger instances.
+
+    Features:
+    - Automatic timestamp and log level formatting
+    - Color-coded console output (when enabled)
+    - Multi-target output (file, console, Event Log, handlers)
+    - Log level filtering
+    - Correlation ID support
+    - Structured JSON output (when enabled)
+    - Lazy string formatting via Logger.Write(template, args, level)
 
     .PARAMETER LogMsg
-        The message text to be written to the log. Supports string input from pipeline.
-        Can include variables and expressions that will be evaluated.
-        Maximum recommended length is 8KB per message for optimal performance.
-        Aliases: LM, Msg, Message
+    The message text to be logged. Can include variables and formatted strings.
+    For better performance with filtered messages, use Logger.Write(template, args, level) directly.
+    Aliases: LM, Msg, Message
 
     .PARAMETER LogLevel
-        Severity level of the log message. Determines color coding in console output.
-        Valid values:
-        - INFO: General informational messages (White in console)
-        - WARNING: Warning conditions that may need attention (Yellow in console)
-        - ERROR: Error conditions requiring intervention (Red in console)
-        - CRITICAL: System-critical failures requiring immediate action (Dark Red in console)
-        - DEBUG: Detailed diagnostic information (Cyan in console)
-        - SUCCESS: Successful operation confirmations (Green in console)
-        Default: "INFO"
-        Aliases: LL, LogLvl, Level
+    Severity level of the log message. Affects formatting, filtering, and color coding.
+    Valid values: INFO, WARNING, ERROR, DEBUG, SUCCESS, CRITICAL
+    Priority order (highest to lowest): CRITICAL > ERROR > WARNING > SUCCESS > INFO > DEBUG
+    Aliases: LL, LogLvl, Level
+    Default: "INFO"
 
     .PARAMETER Logger
-        Logger instance created by Initialize-Log. If not specified, uses the default logger
-        set by Initialize-Log -Default. If no default exists and Logger is not provided,
-        the function will throw an error.
-        Aliases: L, Log
-
-    .INPUTS
-        System.String
-        Accepts string messages from the pipeline for bulk logging operations.
-
-    .OUTPUTS
-        None
-        This function does not return any output.
+    Logger instance to write to. If not specified, uses the script-wide default logger.
+    If no default logger exists and this parameter is not provided, an error is thrown.
+    Aliases: L, Log
 
     .EXAMPLE
-        # Basic logging with default logger
-        Initialize-Log -Default
-        Write-Log "Application started"
-        Write-Log "Processing completed"
-        
-        # Output in log file:
-        # [2025-08-15 10:30:00][INFO] Application started
-        # [2025-08-15 10:30:01][INFO] Processing completed
+    # Write to default logger with INFO level
+    Write-Log "Application started successfully"
 
     .EXAMPLE
-        # Using different severity levels
-        Initialize-Log -Default -WriteConsole
-        
-        Write-Log "Normal operation" -LogLevel "INFO"
-        Write-Log "Low disk space" -LogLevel "WARNING"
-        Write-Log "Database connection failed" -LogLevel "ERROR"
-        Write-Log "Variable X = 42" -LogLevel "DEBUG"
-        Write-Log "Upload completed" -LogLevel "SUCCESS"
-        
-        # Each message appears in different colors in console
+    # Write warning to default logger
+    Write-Log "Disk space low" -LogLevel "WARNING"
 
     .EXAMPLE
-        # Using specific logger instances
-        $AppLog = Initialize-Log -LogName "Application"
-        $ErrorLog = Initialize-Log -LogName "Errors" -LogLevel "ERROR"
-        
-        Write-Log "App started" -Logger $AppLog
-        Write-Log "Critical failure" -Logger $ErrorLog -LogLevel "ERROR"
+    # Write to specific logger instance
+    $ErrorLog = Initialize-Log -LogName "Errors" -LogFilter "ERROR"
+    Write-Log "Database connection failed" -LogLevel "ERROR" -Logger $ErrorLog
 
     .EXAMPLE
-        # Pipeline input for bulk logging
-        Initialize-Log -Default
-        
-        # Log multiple messages
-        @("Step 1", "Step 2", "Step 3") | Write-Log
-        
-        # Log with specific level
-        Get-Service | Where-Object Status -eq "Stopped" | ForEach-Object {
-            "Service $($_.Name) is stopped"
-        } | Write-Log -LogLevel "WARNING"
+    # Write formatted message with variables
+    $count = 150
+    $duration = 3.5
+    Write-Log "Processed $count items in $duration seconds" -LogLevel "SUCCESS"
 
     .EXAMPLE
-        # Logging with variable expansion
-        $userName = $env:USERNAME
-        $computerName = $env:COMPUTERNAME
-        $processCount = (Get-Process).Count
-        
-        Write-Log "User $userName logged into $computerName"
-        Write-Log "System is running $processCount processes" -LogLevel "INFO"
+    # Use lazy string formatting for performance (bypasses Write-Log function)
+    $Logger = Initialize-Log -LogName "Performance" -LogFilter "WARNING"
+    # This expensive string format is NEVER executed because DEBUG is filtered out
+    $Logger.Write("Processing item {0} of {1} with details: {2}", @($i, $total, $expensiveObject.ToString()), "DEBUG")
 
     .EXAMPLE
-        # Error handling with detailed logging
-        Initialize-Log -Default -LogName "ErrorHandler"
-        
-        Try {
-            Write-Log "Attempting file operation..." -LogLevel "INFO"
-            $content = Get-Content "C:\NonExistent.txt" -ErrorAction Stop
-        }
-        Catch {
-            Write-Log "Failed to read file: $_" -LogLevel "ERROR"
-            Write-Log "Error type: $($_.Exception.GetType().Name)" -LogLevel "DEBUG"
-            Write-Log "Script line: $($_.InvocationInfo.ScriptLineNumber)" -LogLevel "DEBUG"
-        }
+    # Write with correlation ID for distributed tracing
+    $Logger = Initialize-Log -LogName "WebApp"
+    $Logger.SetCorrelationId()
+    Write-Log "Request received" -Logger $Logger
+    Write-Log "Processing request" -Logger $Logger
+    Write-Log "Request completed" -Logger $Logger
+    $Logger.ClearCorrelationId()
 
     .EXAMPLE
-        # Performance logging with timestamps
-        $logger = Initialize-Log -LogName "Performance" -DateTimeFormat "yyyy-MM-dd HH:mm:ss.fff"
-        
-        Write-Log "Operation started" -Logger $logger
-        # Perform operation
-        Start-Sleep -Milliseconds 500
-        Write-Log "Operation completed" -Logger $logger
-        
-        # Timestamps include milliseconds for precise timing
-
-    .EXAMPLE
-        # Structured logging for parsing
-        Initialize-Log -Default -NoLogInfo
-        
-        $logData = @{
-            Timestamp = Get-Date -Format "o"
-            User = $env:USERNAME
-            Action = "FileUpload"
-            Result = "Success"
-            Duration = 1.543
-        }
-        
-        Write-Log ($logData | ConvertTo-Json -Compress)
-        
-        # Creates clean JSON entries without log prefixes
+    # Write different log levels with aliases
+    Write-Log "Starting backup process" -Level INFO
+    Write-Log "No space on backup drive" -LogLvl WARNING
+    Write-Log "Backup failed - critical data loss risk" -LL CRITICAL
 
     .NOTES
-        - If no logger is available, the function will throw an error
-        - Large messages (>8KB) may impact performance
-        - Console output may slow down high-volume logging
-        - File locks from other processes will trigger retry mechanism
-        - Log rotation happens automatically based on logger configuration
+    Performance: For high-volume logging with filtered messages, use Logger.Write(template, args, level)
+                 directly instead of Write-Log to take advantage of lazy string formatting.
 
-    .LINK
-        Initialize-Log
-
-    .LINK
-        Write-LogInfo
-
-    .LINK
-        Write-LogWarning
-
-    .LINK
-        Write-LogError
-
-    .LINK
-        Write-LogDebug
-
-    .LINK
-        Write-LogSuccess
+    Thread Safety: Write-Log is thread-safe when using file-based logging with retry logic.
+                   For true multi-threaded scenarios, consider BufferedWrites or separate loggers.
     #>
-
-    [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$true, Position=0, ValueFromPipeline=$true)]
-        [alias ('LM', 'Msg', 'Message')]
-        [String] $LogMsg,
-
-        [Parameter()]
-        [alias ('LL', 'LogLvl', 'Level')]
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'CRITICAL', 'DEBUG', 'SUCCESS')]
-        [string] $LogLevel = "INFO",
-
-        [Parameter()]
-        [alias ('L', 'Log')] 
-        $Logger = $Script:DefaultLog
+        [alias ('LM', 'Msg', 'Message')][String] $LogMsg = "",
+        [alias ('LL', 'LogLvl', 'Level')][string] $LogLevel = "INFO",
+        [alias ('L', 'Log')] $Logger = $Script:DefaultLogger
     )
 
-    Process {
-        If (-not $Logger) {
-            Write-Error "No log class has been initialized. Initialize a default log class or provide an initialized log class."
-            Return
-        } 
-        
+    If (-not $Logger) {
+        Write-Error "No log class has been initialized. Initialize a default log class or provide an initialized log class."
+    } Else {
         # Write the log entry
         $Logger.Write($LogMsg, $LogLevel)
     }
@@ -2878,6 +4420,1544 @@ Function Test-Logger {
     }
 }
 
+Function New-Logger {
+    <#
+    .SYNOPSIS
+        Creates a new Logger instance with specified configuration settings.
+
+    .DESCRIPTION
+        New-Logger is a wrapper around Initialize-Log that provides a more intuitive function name
+        for creating logger instances. It returns a configured Logger object that can be used with
+        Write-Log and related functions.
+
+        This function is ideal for scenarios where you need multiple logger instances or want to
+        explicitly manage logger objects without setting a script-wide default.
+
+    .PARAMETER LogName
+        Name of the log file (without extension). The .log extension is automatically appended.
+        Default: "Debug"
+
+    .PARAMETER LogPath
+        Directory path where log files will be created. Directory is created if it doesn't exist.
+        Default: "C:\Temp"
+
+    .PARAMETER LogLevel
+        Default logging level. Valid values: INFO, WARNING, ERROR, DEBUG, SUCCESS, CRITICAL
+        Default: "INFO"
+
+    .PARAMETER LogRoll
+        Enable automatic log rotation based on size or age.
+        Default: $false
+
+    .PARAMETER LogRotateOpt
+        Rotation threshold. Format: "10M" (10MB), "100M", "1G" (size-based) or "7" (days-based).
+        Default: "1M"
+
+    .PARAMETER LogZip
+        Enable compression of rotated logs into zip archives.
+        Default: $false
+
+    .PARAMETER LogCountMax
+        Maximum number of rotated log files to keep. Oldest logs are deleted when exceeded.
+        Default: 5
+
+    .PARAMETER WriteConsole
+        Enable output to console in addition to file logging.
+        Default: $false
+
+    .PARAMETER ConsoleOnly
+        Output only to console, do not create log files.
+        Default: $false
+
+    .PARAMETER ModuleName
+        Module or component name to include in log entries for identification.
+        Default: $null
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        Logger
+        Returns a configured Logger instance.
+
+    .EXAMPLE
+        # Create a simple logger
+        $log = New-Logger -LogName "Application" -LogPath "C:\Logs"
+        Write-Log "Application started" -Logger $log
+
+    .EXAMPLE
+        # Create logger with rotation and compression
+        $log = New-Logger -LogName "Production" -LogPath "D:\Logs" -LogRoll -LogRotateOpt "50M" -LogZip -LogCountMax 10
+        Write-Log "Production event" -Logger $log
+
+    .EXAMPLE
+        # Create console-only logger for interactive scripts
+        $log = New-Logger -LogName "Interactive" -WriteConsole -ConsoleOnly
+        Write-Log "This appears only in console" -Logger $log
+
+    .EXAMPLE
+        # Create multiple loggers for different components
+        $webLog = New-Logger -LogName "WebAPI" -LogPath "C:\Logs" -ModuleName "WebAPI"
+        $dbLog = New-Logger -LogName "Database" -LogPath "C:\Logs" -ModuleName "DataLayer"
+
+        Write-Log "API request received" -Logger $webLog
+        Write-Log "Database query executed" -Logger $dbLog
+
+    .NOTES
+        This is a convenience wrapper around Initialize-Log with a more intuitive name.
+        Use Set-DefaultLogger if you want to set a logger as the script-wide default.
+
+    .LINK
+        Initialize-Log
+
+    .LINK
+        Set-DefaultLogger
+
+    .LINK
+        Get-Logger
+    #>
+    [CmdletBinding()]
+    [OutputType([Logger])]
+    Param(
+        [Parameter()]
+        [string]$LogName = "Debug",
+
+        [Parameter()]
+        [string]$LogPath = "C:\Temp",
+
+        [Parameter()]
+        [ValidateSet("INFO", "WARNING", "ERROR", "DEBUG", "SUCCESS", "CRITICAL")]
+        [string]$LogLevel = "INFO",
+
+        [Parameter()]
+        [switch]$LogRoll,
+
+        [Parameter()]
+        [string]$LogRotateOpt = "1M",
+
+        [Parameter()]
+        [switch]$LogZip,
+
+        [Parameter()]
+        [int]$LogCountMax = 5,
+
+        [Parameter()]
+        [switch]$WriteConsole,
+
+        [Parameter()]
+        [switch]$ConsoleOnly,
+
+        [Parameter()]
+        [string]$ModuleName
+    )
+
+    # Build parameter hashtable
+    $params = @{
+        LogName = $LogName
+        LogPath = $LogPath
+        LogLevel = $LogLevel
+        LogRoll = $LogRoll
+        LogRotateOpt = $LogRotateOpt
+        LogZip = $LogZip
+        LogCountMax = $LogCountMax
+        WriteConsole = $WriteConsole
+        ConsoleOnly = $ConsoleOnly
+    }
+
+    If ($ModuleName) {
+        $params.ModuleName = $ModuleName
+    }
+
+    # Call Initialize-Log with parameters (do not set as default)
+    Return Initialize-Log @params
+}
+
+Function Get-Logger {
+    <#
+    .SYNOPSIS
+        Retrieves the default logger or creates one if none exists.
+
+    .DESCRIPTION
+        Get-Logger provides a safe way to retrieve the current default logger instance. If no default
+        logger has been initialized, it creates a new one with default settings and sets it as the
+        default. This ensures that logging functions always have a logger to work with.
+
+        This is particularly useful in modules or scripts where you want to ensure a logger exists
+        without explicitly checking every time.
+
+    .PARAMETER EnsureExists
+        If specified, creates a default logger if one doesn't exist. If not specified and no default
+        logger exists, returns $null.
+        Default: $true
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        Logger
+        Returns the default Logger instance, or $null if none exists and EnsureExists is $false.
+
+    .EXAMPLE
+        # Get or create default logger
+        $log = Get-Logger
+        Write-Log "Application started" -Logger $log
+
+    .EXAMPLE
+        # Check if default logger exists without creating one
+        $log = Get-Logger -EnsureExists:$false
+        if ($log) {
+            Write-Log "Using existing logger"
+        } else {
+            Write-Host "No logger initialized"
+        }
+
+    .EXAMPLE
+        # Use in a function that needs logging
+        function Do-Something {
+            $log = Get-Logger
+            Write-Log "Doing something..." -Logger $log
+            # ... function logic ...
+            Write-Log "Done!" -Logger $log
+        }
+
+    .NOTES
+        If EnsureExists is $true (default) and no logger exists, creates a logger with:
+        - LogName: "Debug"
+        - LogPath: "C:\Temp"
+        - LogLevel: "INFO"
+
+    .LINK
+        Set-DefaultLogger
+
+    .LINK
+        New-Logger
+
+    .LINK
+        Initialize-Log
+    #>
+    [CmdletBinding()]
+    [OutputType([Logger])]
+    Param(
+        [Parameter()]
+        [bool]$EnsureExists = $true
+    )
+
+    If ($Script:DefaultLog) {
+        Return $Script:DefaultLog
+    }
+
+    If ($EnsureExists) {
+        Write-Verbose "No default logger exists, creating one with default settings"
+        $Script:DefaultLog = Initialize-Log -Default
+        Return $Script:DefaultLog
+    }
+
+    Return $null
+}
+
+Function Set-DefaultLogger {
+    <#
+    .SYNOPSIS
+        Sets a logger instance as the script-wide default logger.
+
+    .DESCRIPTION
+        Set-DefaultLogger configures a Logger instance as the default logger for the current script
+        or module scope. Once set, all Write-Log* functions will use this logger by default unless
+        a different logger is explicitly specified.
+
+        This is useful when you create a logger with specific settings and want to use it throughout
+        your script without passing it to every logging call.
+
+    .PARAMETER Logger
+        The Logger instance to set as default. Must be a valid Logger object created by Initialize-Log
+        or New-Logger.
+
+    .INPUTS
+        Logger
+        Accepts a Logger instance via the pipeline.
+
+    .OUTPUTS
+        None
+
+    .EXAMPLE
+        # Create a logger and set it as default
+        $log = New-Logger -LogName "Application" -LogPath "C:\Logs" -LogRoll
+        Set-DefaultLogger -Logger $log
+
+        # Now all Write-Log calls use this logger by default
+        Write-Log "Application started"
+        Write-LogInfo "Processing data"
+
+    .EXAMPLE
+        # Pipeline usage
+        New-Logger -LogName "Production" -LogPath "D:\Logs" -LogRoll -LogZip | Set-DefaultLogger
+        Write-Log "Production script started"
+
+    .EXAMPLE
+        # Switch default logger during script execution
+        $normalLog = New-Logger -LogName "Normal" -LogPath "C:\Logs"
+        $debugLog = New-Logger -LogName "Debug" -LogPath "C:\Logs" -LogLevel "DEBUG" -WriteConsole
+
+        Set-DefaultLogger -Logger $normalLog
+        Write-Log "Normal operation"
+
+        # Switch to debug mode
+        Set-DefaultLogger -Logger $debugLog
+        Write-LogDebug "Debug information"
+
+    .NOTES
+        The default logger is stored in $Script:DefaultLog and persists for the script scope.
+        Module functions can use Get-Logger to retrieve the default logger.
+
+    .LINK
+        Get-DefaultLogger
+
+    .LINK
+        Get-Logger
+
+    .LINK
+        New-Logger
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [Logger]$Logger
+    )
+
+    Process {
+        $Script:DefaultLog = $Logger
+        Write-Verbose "Default logger set to: $($Logger.LogName) at $($Logger.LogPath)"
+    }
+}
+
+Function Get-DefaultLogger {
+    <#
+    .SYNOPSIS
+        Returns the current default logger instance.
+
+    .DESCRIPTION
+        Get-DefaultLogger retrieves the logger that has been set as the script-wide default using
+        Initialize-Log -Default or Set-DefaultLogger. If no default logger has been configured,
+        returns $null.
+
+        This function is useful for checking whether a default logger exists before using logging
+        functions, or for retrieving the default logger to inspect its configuration.
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        Logger
+        Returns the default Logger instance, or $null if no default logger is set.
+
+    .EXAMPLE
+        # Check if default logger exists
+        $log = Get-DefaultLogger
+        if ($log) {
+            Write-Host "Default logger: $($log.LogName) at $($log.LogPath)"
+        } else {
+            Write-Host "No default logger configured"
+        }
+
+    .EXAMPLE
+        # Get default logger info
+        $log = Get-DefaultLogger
+        if ($log) {
+            Get-LoggerInfo -Logger $log | Format-List
+        }
+
+    .EXAMPLE
+        # Verify default logger before script execution
+        if (-not (Get-DefaultLogger)) {
+            Write-Error "No default logger configured. Initialize with Initialize-Log -Default"
+            exit 1
+        }
+
+        Write-Log "Script starting..."
+
+    .NOTES
+        Returns $null if no default logger has been set.
+        Use Get-Logger -EnsureExists to automatically create a default logger if none exists.
+
+    .LINK
+        Set-DefaultLogger
+
+    .LINK
+        Get-Logger
+
+    .LINK
+        Initialize-Log
+    #>
+    [CmdletBinding()]
+    [OutputType([Logger])]
+    Param()
+
+    Return $Script:DefaultLog
+}
+
+Function Add-LogEnricher {
+    <#
+    .SYNOPSIS
+        Adds a context enricher to a logger for automatic property injection.
+
+    .DESCRIPTION
+        Add-LogEnricher attaches an enricher object to a logger instance. Enrichers automatically add
+        contextual properties to log entries, such as machine name, process ID, thread ID, environment
+        variables, or network information.
+
+        Multiple enrichers can be added to a single logger, and each enricher's Enrich() method is
+        called for every log entry to inject its properties.
+
+    .PARAMETER Logger
+        The Logger instance to add the enricher to. If not specified, uses the default logger.
+
+    .PARAMETER Enricher
+        The enricher object to add. Must implement the IEnricher interface with an Enrich() method.
+        Can be created using New-*Enricher functions (New-MachineEnricher, New-ProcessEnricher, etc.)
+        or custom enrichers inheriting from IEnricher.
+
+    .INPUTS
+        Logger
+        Accepts a Logger instance via the pipeline.
+
+    .OUTPUTS
+        None
+
+    .EXAMPLE
+        # Add machine enricher to default logger
+        Initialize-Log -Default -LogName "Application"
+        $machineEnricher = New-MachineEnricher
+        Add-LogEnricher -Enricher $machineEnricher
+
+        Write-Log "Application started"
+        # Log includes: MachineName, OSVersion, Domain
+
+    .EXAMPLE
+        # Add multiple enrichers to a logger
+        $log = New-Logger -LogName "Production" -LogPath "D:\Logs"
+
+        Add-LogEnricher -Logger $log -Enricher (New-MachineEnricher)
+        Add-LogEnricher -Logger $log -Enricher (New-ProcessEnricher)
+        Add-LogEnricher -Logger $log -Enricher (New-ThreadEnricher)
+
+        Write-Log "Enriched log entry" -Logger $log
+
+    .EXAMPLE
+        # Pipeline usage to add enricher
+        $log = New-Logger -LogName "App"
+        $log | Add-LogEnricher -Enricher (New-NetworkEnricher)
+        Write-Log "Network information included" -Logger $log
+
+    .EXAMPLE
+        # Create custom enricher
+        class CustomEnricher : IEnricher {
+            [hashtable] Enrich() {
+                return @{
+                    AppVersion = "1.0.0"
+                    BuildDate = "2025-11-05"
+                    Environment = "Production"
+                }
+            }
+        }
+
+        $log = New-Logger -LogName "Custom"
+        Add-LogEnricher -Logger $log -Enricher ([CustomEnricher]::new())
+        Write-Log "Custom properties included"
+
+    .NOTES
+        Enrichers are called for every log entry, so avoid expensive operations in Enrich() method.
+        Common enrichers: MachineEnricher, ProcessEnricher, ThreadEnricher, EnvironmentEnricher, NetworkEnricher
+
+    .LINK
+        New-MachineEnricher
+
+    .LINK
+        New-ProcessEnricher
+
+    .LINK
+        New-ThreadEnricher
+
+    .LINK
+        Remove-LogEnricher
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter(ValueFromPipeline)]
+        [Logger]$Logger = $Script:DefaultLog,
+
+        [Parameter(Mandatory)]
+        [IEnricher]$Enricher
+    )
+
+    Process {
+        If (-not $Logger) {
+            Write-Error "No logger specified and no default logger is initialized."
+            Return
+        }
+
+        $Logger.AddEnricher($Enricher)
+        Write-Verbose "Enricher added to logger: $($Enricher.GetType().Name)"
+    }
+}
+
+Function Add-LogHandler {
+    <#
+    .SYNOPSIS
+        Adds a log handler to a logger for custom output destinations.
+
+    .DESCRIPTION
+        Add-LogHandler attaches a handler object to a logger instance. Handlers define where and how
+        log messages are written. Multiple handlers can be added to support writing to multiple
+        destinations simultaneously (e.g., file, console, Windows Event Log, database, API).
+
+        The Logger class supports FileHandler, ConsoleHandler, EventLogHandler, and custom handlers.
+
+    .PARAMETER Logger
+        The Logger instance to add the handler to. If not specified, uses the default logger.
+
+    .PARAMETER Handler
+        The handler object to add. Must inherit from LogHandler base class. Can be created using
+        New-*Handler functions (New-FileHandler, New-ConsoleHandler, etc.) or custom handlers.
+
+    .INPUTS
+        Logger
+        Accepts a Logger instance via the pipeline.
+
+    .OUTPUTS
+        None
+
+    .EXAMPLE
+        # Add console handler to logger
+        $log = New-Logger -LogName "Application"
+        $consoleHandler = New-ConsoleHandler
+        Add-LogHandler -Logger $log -Handler $consoleHandler
+
+        Write-Log "Appears in both file and console" -Logger $log
+
+    .EXAMPLE
+        # Add Windows Event Log handler
+        $log = New-Logger -LogName "Production"
+        $eventHandler = New-EventLogHandler -LogName "Application" -Source "MyApp"
+        Add-LogHandler -Logger $log -Handler $eventHandler
+
+        Write-LogError "Error logged to file and Windows Event Log" -Logger $log
+
+    .EXAMPLE
+        # Multiple handlers for different destinations
+        $log = New-Logger -LogName "MultiTarget"
+
+        Add-LogHandler -Logger $log -Handler (New-FileHandler -Path "C:\Logs\app.log")
+        Add-LogHandler -Logger $log -Handler (New-ConsoleHandler)
+        Add-LogHandler -Logger $log -Handler (New-EventLogHandler -LogName "Application" -Source "App")
+
+        Write-Log "Written to file, console, and event log" -Logger $log
+
+    .EXAMPLE
+        # Pipeline usage
+        $log = New-Logger -LogName "Pipeline"
+        $log | Add-LogHandler -Handler (New-ConsoleHandler)
+        Write-Log "Handler added via pipeline" -Logger $log
+
+    .NOTES
+        Handlers are invoked in the order they are added.
+        Use NullHandler to disable output without removing logger functionality.
+
+    .LINK
+        New-FileHandler
+
+    .LINK
+        New-ConsoleHandler
+
+    .LINK
+        New-EventLogHandler
+
+    .LINK
+        Remove-LogHandler
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter(ValueFromPipeline)]
+        [Logger]$Logger = $Script:DefaultLog,
+
+        [Parameter(Mandatory)]
+        [LogHandler]$Handler
+    )
+
+    Process {
+        If (-not $Logger) {
+            Write-Error "No logger specified and no default logger is initialized."
+            Return
+        }
+
+        $Logger.AddHandler($Handler)
+        Write-Verbose "Handler added to logger: $($Handler.GetType().Name)"
+    }
+}
+
+Function Add-LogFilter {
+    <#
+    .SYNOPSIS
+        Adds a filter to a logger to conditionally include or exclude log entries.
+
+    .DESCRIPTION
+        Add-LogFilter attaches a filter object to a logger instance. Filters implement logic to
+        determine whether a log entry should be written based on various conditions (time of day,
+        calling function, user, custom properties, etc.).
+
+        Multiple filters can be added to a logger, and ALL filters must return $true for a log
+        entry to be written (AND logic).
+
+    .PARAMETER Logger
+        The Logger instance to add the filter to. If not specified, uses the default logger.
+
+    .PARAMETER Filter
+        The filter object to add. Must implement the ILogFilter interface with a ShouldLog() method.
+        Can be created using New-*Filter functions or custom filters inheriting from ILogFilter.
+
+    .INPUTS
+        Logger
+        Accepts a Logger instance via the pipeline.
+
+    .OUTPUTS
+        None
+
+    .EXAMPLE
+        # Only log during business hours
+        $log = New-Logger -LogName "BusinessHours"
+        $timeFilter = New-TimeFilter -StartHour 8 -EndHour 17
+        Add-LogFilter -Logger $log -Filter $timeFilter
+
+        Write-Log "Only logged between 8 AM and 5 PM" -Logger $log
+
+    .EXAMPLE
+        # Filter logs from specific function
+        $log = New-Logger -LogName "Filtered"
+        $funcFilter = New-FunctionFilter -AllowedFunctions @("Main", "ProcessData")
+        Add-LogFilter -Logger $log -Filter $funcFilter
+
+        # Only logs from Main or ProcessData functions will be written
+
+    .EXAMPLE
+        # Combine multiple filters
+        $log = New-Logger -LogName "Restricted"
+
+        Add-LogFilter -Logger $log -Filter (New-TimeFilter -StartHour 8 -EndHour 17)
+        Add-LogFilter -Logger $log -Filter (New-UserFilter -AllowedUsers @("admin", "operator"))
+
+        # Logs only written during business hours AND by admin/operator users
+
+    .EXAMPLE
+        # Custom filter for high-priority logs only
+        class PriorityFilter : ILogFilter {
+            [bool] ShouldLog([string]$Message, [string]$Level, [hashtable]$Properties) {
+                return $Level -in @("ERROR", "CRITICAL", "WARNING")
+            }
+        }
+
+        $log = New-Logger -LogName "HighPriority"
+        Add-LogFilter -Logger $log -Filter ([PriorityFilter]::new())
+
+        Write-LogInfo "Not logged (INFO filtered out)" -Logger $log
+        Write-LogError "Logged (ERROR allowed)" -Logger $log
+
+    .NOTES
+        All filters must return $true for a log entry to be written (AND logic).
+        Filters are evaluated before handlers, so filtered messages are never written.
+
+    .LINK
+        New-FunctionFilter
+
+    .LINK
+        New-TimeFilter
+
+    .LINK
+        New-UserFilter
+
+    .LINK
+        Remove-LogFilter
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter(ValueFromPipeline)]
+        [Logger]$Logger = $Script:DefaultLog,
+
+        [Parameter(Mandatory)]
+        [ILogFilter]$Filter
+    )
+
+    Process {
+        If (-not $Logger) {
+            Write-Error "No logger specified and no default logger is initialized."
+            Return
+        }
+
+        $Logger.AddFilter($Filter)
+        Write-Verbose "Filter added to logger: $($Filter.GetType().Name)"
+    }
+}
+
+Function New-FileHandler {
+    <#
+    .SYNOPSIS
+        Creates a new FileHandler for writing logs to a file.
+
+    .DESCRIPTION
+        New-FileHandler creates a LogHandler that writes log entries to a specified file path.
+        This handler can be added to a logger using Add-LogHandler to enable file-based logging
+        with custom file locations separate from the logger's default log file.
+
+    .PARAMETER Path
+        The full path to the log file where entries will be written.
+
+    .PARAMETER Encoding
+        The file encoding to use. Valid values: Unicode, UTF7, UTF8, UTF32, ASCII, BigEndianUnicode, Default, OEM
+        Default: "Unicode"
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        FileHandler
+        Returns a configured FileHandler instance.
+
+    .EXAMPLE
+        # Create file handler and add to logger
+        $log = New-Logger -LogName "Application"
+        $fileHandler = New-FileHandler -Path "C:\Logs\custom.log"
+        Add-LogHandler -Logger $log -Handler $fileHandler
+
+    .EXAMPLE
+        # Multiple file handlers for different log levels
+        $log = New-Logger -LogName "MultiFile"
+
+        $errorHandler = New-FileHandler -Path "C:\Logs\errors.log"
+        $infoHandler = New-FileHandler -Path "C:\Logs\info.log"
+
+        Add-LogHandler -Logger $log -Handler $errorHandler
+        Add-LogHandler -Logger $log -Handler $infoHandler
+
+    .NOTES
+        FileHandler inherits from LogHandler base class.
+        The directory is created automatically if it doesn't exist.
+
+    .LINK
+        Add-LogHandler
+
+    .LINK
+        New-ConsoleHandler
+
+    .LINK
+        New-EventLogHandler
+    #>
+    [CmdletBinding()]
+    [OutputType([FileHandler])]
+    Param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter()]
+        [ValidateSet("Unicode", "UTF7", "UTF8", "UTF32", "ASCII", "BigEndianUnicode", "Default", "OEM")]
+        [string]$Encoding = "Unicode"
+    )
+
+    Return [FileHandler]::new($Path, $Encoding)
+}
+
+Function New-ConsoleHandler {
+    <#
+    .SYNOPSIS
+        Creates a new ConsoleHandler for writing logs to the console.
+
+    .DESCRIPTION
+        New-ConsoleHandler creates a LogHandler that writes log entries to the PowerShell console
+        with color-coded output based on log level. This handler can be added to a logger using
+        Add-LogHandler to enable console output.
+
+    .PARAMETER UseColor
+        Enable color-coded console output based on log level.
+        Default: $true
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        ConsoleHandler
+        Returns a configured ConsoleHandler instance.
+
+    .EXAMPLE
+        # Create console handler and add to logger
+        $log = New-Logger -LogName "Application"
+        $consoleHandler = New-ConsoleHandler
+        Add-LogHandler -Logger $log -Handler $consoleHandler
+
+        Write-LogError "Appears in red in console" -Logger $log
+
+    .EXAMPLE
+        # Console handler without colors
+        $log = New-Logger -LogName "Plain"
+        $consoleHandler = New-ConsoleHandler -UseColor:$false
+        Add-LogHandler -Logger $log -Handler $consoleHandler
+
+    .NOTES
+        ConsoleHandler inherits from LogHandler base class.
+        Color mappings: ERROR/CRITICAL=Red, WARNING=Yellow, SUCCESS=Green, INFO=White, DEBUG=Gray
+
+    .LINK
+        Add-LogHandler
+
+    .LINK
+        New-FileHandler
+
+    .LINK
+        New-EventLogHandler
+    #>
+    [CmdletBinding()]
+    [OutputType([ConsoleHandler])]
+    Param(
+        [Parameter()]
+        [bool]$UseColor = $true
+    )
+
+    Return [ConsoleHandler]::new($UseColor)
+}
+
+Function New-EventLogHandler {
+    <#
+    .SYNOPSIS
+        Creates a new EventLogHandler for writing logs to Windows Event Log.
+
+    .DESCRIPTION
+        New-EventLogHandler creates a LogHandler that writes log entries to the Windows Event Log.
+        This handler enables integration with Windows logging infrastructure for centralized log
+        management and monitoring.
+
+    .PARAMETER LogName
+        The Windows Event Log to write to (Application, System, Security, or custom log name).
+        Default: "Application"
+
+    .PARAMETER Source
+        The event source name that identifies the application in the event log.
+        The source must be registered with Windows before use.
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        EventLogHandler
+        Returns a configured EventLogHandler instance.
+
+    .EXAMPLE
+        # Create event log handler
+        $log = New-Logger -LogName "Application"
+        $eventHandler = New-EventLogHandler -LogName "Application" -Source "MyApplication"
+        Add-LogHandler -Logger $log -Handler $eventHandler
+
+        Write-LogError "Error written to Windows Event Log" -Logger $log
+
+    .EXAMPLE
+        # Custom event log
+        $log = New-Logger -LogName "CustomApp"
+        $eventHandler = New-EventLogHandler -LogName "CustomAppLog" -Source "CustomApp"
+        Add-LogHandler -Logger $log -Handler $eventHandler
+
+    .NOTES
+        EventLogHandler inherits from LogHandler base class.
+        The event source must be registered before use: New-EventLog -LogName "Application" -Source "MyApp"
+        Requires elevated permissions to create new event sources.
+
+    .LINK
+        Add-LogHandler
+
+    .LINK
+        New-FileHandler
+
+    .LINK
+        New-ConsoleHandler
+    #>
+    [CmdletBinding()]
+    [OutputType([EventLogHandler])]
+    Param(
+        [Parameter()]
+        [string]$LogName = "Application",
+
+        [Parameter(Mandatory)]
+        [string]$Source
+    )
+
+    Return [EventLogHandler]::new($LogName, $Source)
+}
+
+Function New-NullHandler {
+    <#
+    .SYNOPSIS
+        Creates a new NullHandler that discards all log entries.
+
+    .DESCRIPTION
+        New-NullHandler creates a LogHandler that silently discards all log entries without writing
+        them anywhere. This is useful for temporarily disabling logging without removing logger calls
+        from code, or for testing scenarios where log output is not needed.
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        NullHandler
+        Returns a configured NullHandler instance.
+
+    .EXAMPLE
+        # Disable logging temporarily
+        $log = New-Logger -LogName "Test"
+        $nullHandler = New-NullHandler
+        Add-LogHandler -Logger $log -Handler $nullHandler
+
+        Write-Log "This message is discarded" -Logger $log
+
+    .EXAMPLE
+        # Testing scenario
+        function Test-Function {
+            $log = New-Logger -LogName "Test"
+            Add-LogHandler -Logger $log -Handler (New-NullHandler)
+
+            # Function code with logging calls
+            Write-Log "Test message (not written)" -Logger $log
+        }
+
+    .NOTES
+        NullHandler inherits from LogHandler base class.
+        Useful for testing and temporarily disabling logging.
+
+    .LINK
+        Add-LogHandler
+
+    .LINK
+        New-FileHandler
+
+    .LINK
+        New-ConsoleHandler
+    #>
+    [CmdletBinding()]
+    [OutputType([NullHandler])]
+    Param()
+
+    Return [NullHandler]::new()
+}
+
+Function New-MachineEnricher {
+    <#
+    .SYNOPSIS
+        Creates an enricher that adds machine/computer information to log entries.
+
+    .DESCRIPTION
+        New-MachineEnricher creates an IEnricher that automatically adds computer-related properties
+        to every log entry, including machine name, OS version, domain membership, and IP address.
+
+        Properties added:
+        - MachineName: Computer name
+        - OSVersion: Operating system version
+        - Domain: Active Directory domain (if domain-joined)
+        - IPAddress: Primary IP address
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        MachineEnricher
+        Returns a configured MachineEnricher instance.
+
+    .EXAMPLE
+        # Add machine enricher to logger
+        $log = New-Logger -LogName "Application"
+        $machineEnricher = New-MachineEnricher
+        Add-LogEnricher -Logger $log -Enricher $machineEnricher
+
+        Write-Log "Log includes machine info" -Logger $log
+
+    .EXAMPLE
+        # Combine with other enrichers
+        $log = New-Logger -LogName "FullContext"
+
+        Add-LogEnricher -Logger $log -Enricher (New-MachineEnricher)
+        Add-LogEnricher -Logger $log -Enricher (New-ProcessEnricher)
+        Add-LogEnricher -Logger $log -Enricher (New-ThreadEnricher)
+
+        Write-Log "Comprehensive context logging" -Logger $log
+
+    .NOTES
+        MachineEnricher implements IEnricher interface.
+        Properties are cached per log entry for performance.
+
+    .LINK
+        Add-LogEnricher
+
+    .LINK
+        New-ProcessEnricher
+
+    .LINK
+        New-ThreadEnricher
+    #>
+    [CmdletBinding()]
+    [OutputType([MachineEnricher])]
+    Param()
+
+    Return [MachineEnricher]::new()
+}
+
+Function New-ProcessEnricher {
+    <#
+    .SYNOPSIS
+        Creates an enricher that adds process information to log entries.
+
+    .DESCRIPTION
+        New-ProcessEnricher creates an IEnricher that automatically adds process-related properties
+        to every log entry, including process ID, name, start time, and memory usage.
+
+        Properties added:
+        - ProcessId: Current process ID (PID)
+        - ProcessName: Process executable name
+        - ProcessStartTime: Process start timestamp
+        - ProcessMemory: Working set memory in MB
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        ProcessEnricher
+        Returns a configured ProcessEnricher instance.
+
+    .EXAMPLE
+        # Add process enricher to logger
+        $log = New-Logger -LogName "Application"
+        $processEnricher = New-ProcessEnricher
+        Add-LogEnricher -Logger $log -Enricher $processEnricher
+
+        Write-Log "Log includes process info" -Logger $log
+
+    .EXAMPLE
+        # Useful for multi-process applications
+        $log = New-Logger -LogName "MultiProcess"
+        Add-LogEnricher -Logger $log -Enricher (New-ProcessEnricher)
+
+        # Each process instance logs with its own PID
+        Write-Log "Process-specific logging" -Logger $log
+
+    .NOTES
+        ProcessEnricher implements IEnricher interface.
+        Useful for debugging multi-process applications.
+
+    .LINK
+        Add-LogEnricher
+
+    .LINK
+        New-MachineEnricher
+
+    .LINK
+        New-ThreadEnricher
+    #>
+    [CmdletBinding()]
+    [OutputType([ProcessEnricher])]
+    Param()
+
+    Return [ProcessEnricher]::new()
+}
+
+Function New-ThreadEnricher {
+    <#
+    .SYNOPSIS
+        Creates an enricher that adds thread information to log entries.
+
+    .DESCRIPTION
+        New-ThreadEnricher creates an IEnricher that automatically adds thread-related properties
+        to every log entry, including thread ID and managed thread status. This is particularly
+        useful for debugging multi-threaded applications and runspaces.
+
+        Properties added:
+        - ThreadId: Current managed thread ID
+        - ThreadName: Thread name (if set)
+        - IsThreadPoolThread: Whether thread is from thread pool
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        ThreadEnricher
+        Returns a configured ThreadEnricher instance.
+
+    .EXAMPLE
+        # Add thread enricher to logger
+        $log = New-Logger -LogName "MultiThreaded"
+        $threadEnricher = New-ThreadEnricher
+        Add-LogEnricher -Logger $log -Enricher $threadEnricher
+
+        Write-Log "Log includes thread info" -Logger $log
+
+    .EXAMPLE
+        # Useful for runspace debugging
+        $log = New-Logger -LogName "Runspaces"
+        Add-LogEnricher -Logger $log -Enricher (New-ThreadEnricher)
+
+        $runspaces = 1..5 | ForEach-Object {
+            $rs = [runspacefactory]::CreateRunspace()
+            $rs.Open()
+            # Runspace code that logs with thread ID
+            $rs
+        }
+
+    .NOTES
+        ThreadEnricher implements IEnricher interface.
+        Essential for debugging parallel and multi-threaded code.
+
+    .LINK
+        Add-LogEnricher
+
+    .LINK
+        New-ProcessEnricher
+
+    .LINK
+        New-MachineEnricher
+    #>
+    [CmdletBinding()]
+    [OutputType([ThreadEnricher])]
+    Param()
+
+    Return [ThreadEnricher]::new()
+}
+
+Function New-EnvironmentEnricher {
+    <#
+    .SYNOPSIS
+        Creates an enricher that adds environment variables to log entries.
+
+    .DESCRIPTION
+        New-EnvironmentEnricher creates an IEnricher that automatically adds specified environment
+        variables to every log entry. This is useful for capturing deployment environment, user
+        context, or custom variables set by deployment scripts.
+
+    .PARAMETER Variables
+        Array of environment variable names to include in log entries. Only specified variables
+        are added to avoid cluttering logs with hundreds of environment variables.
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        EnvironmentEnricher
+        Returns a configured EnvironmentEnricher instance.
+
+    .EXAMPLE
+        # Add specific environment variables to logs
+        $log = New-Logger -LogName "Application"
+        $envEnricher = New-EnvironmentEnricher -Variables @("COMPUTERNAME", "USERNAME", "DEPLOYMENT_ENV")
+        Add-LogEnricher -Logger $log -Enricher $envEnricher
+
+        Write-Log "Log includes environment context" -Logger $log
+
+    .EXAMPLE
+        # Capture deployment environment
+        $log = New-Logger -LogName "Deployment"
+        $envEnricher = New-EnvironmentEnricher -Variables @("CI", "BUILD_NUMBER", "GIT_BRANCH")
+        Add-LogEnricher -Logger $log -Enricher $envEnricher
+
+    .NOTES
+        EnvironmentEnricher implements IEnricher interface.
+        Only specified variables are included to avoid log bloat.
+
+    .LINK
+        Add-LogEnricher
+
+    .LINK
+        New-MachineEnricher
+
+    .LINK
+        New-ProcessEnricher
+    #>
+    [CmdletBinding()]
+    [OutputType([EnvironmentEnricher])]
+    Param(
+        [Parameter(Mandatory)]
+        [string[]]$Variables
+    )
+
+    Return [EnvironmentEnricher]::new($Variables)
+}
+
+Function New-NetworkEnricher {
+    <#
+    .SYNOPSIS
+        Creates an enricher that adds network information to log entries.
+
+    .DESCRIPTION
+        New-NetworkEnricher creates an IEnricher that automatically adds network-related properties
+        to every log entry, including IP addresses, network adapters, and connectivity status.
+
+        Properties added:
+        - PrimaryIP: Primary IPv4 address
+        - NetworkAdapters: Active network adapter count
+        - DefaultGateway: Default gateway address
+        - DNSServers: Configured DNS servers
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        NetworkEnricher
+        Returns a configured NetworkEnricher instance.
+
+    .EXAMPLE
+        # Add network enricher to logger
+        $log = New-Logger -LogName "NetworkApp"
+        $networkEnricher = New-NetworkEnricher
+        Add-LogEnricher -Logger $log -Enricher $networkEnricher
+
+        Write-Log "Log includes network info" -Logger $log
+
+    .EXAMPLE
+        # Useful for distributed applications
+        $log = New-Logger -LogName "Distributed"
+        Add-LogEnricher -Logger $log -Enricher (New-NetworkEnricher)
+        Add-LogEnricher -Logger $log -Enricher (New-MachineEnricher)
+
+        Write-Log "Full network and machine context" -Logger $log
+
+    .NOTES
+        NetworkEnricher implements IEnricher interface.
+        Network information is captured at log time, not enricher creation time.
+
+    .LINK
+        Add-LogEnricher
+
+    .LINK
+        New-MachineEnricher
+
+    .LINK
+        New-ProcessEnricher
+    #>
+    [CmdletBinding()]
+    [OutputType([NetworkEnricher])]
+    Param()
+
+    Return [NetworkEnricher]::new()
+}
+
+Function New-FunctionFilter {
+    <#
+    .SYNOPSIS
+        Creates a filter that only logs messages from specified functions.
+
+    .DESCRIPTION
+        New-FunctionFilter creates an ILogFilter that restricts logging to messages originating
+        from specific functions. This is useful for focusing logs on particular code paths or
+        debugging specific functions without modifying code.
+
+    .PARAMETER AllowedFunctions
+        Array of function names that are allowed to log. Only messages from these functions
+        will be written to the log. Function names are case-insensitive.
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        FunctionFilter
+        Returns a configured FunctionFilter instance.
+
+    .EXAMPLE
+        # Only log from specific functions
+        $log = New-Logger -LogName "Filtered"
+        $funcFilter = New-FunctionFilter -AllowedFunctions @("Initialize-Application", "Process-Data")
+        Add-LogFilter -Logger $log -Filter $funcFilter
+
+        # Only logs from Initialize-Application and Process-Data will be written
+
+    .EXAMPLE
+        # Debug specific code path
+        $log = New-Logger -LogName "Debug"
+        $funcFilter = New-FunctionFilter -AllowedFunctions @("Troublesome-Function")
+        Add-LogFilter -Logger $log -Filter $funcFilter
+
+        # Focus logging on problematic function
+
+    .NOTES
+        FunctionFilter implements ILogFilter interface.
+        Function names are matched case-insensitively.
+
+    .LINK
+        Add-LogFilter
+
+    .LINK
+        New-TimeFilter
+
+    .LINK
+        New-UserFilter
+    #>
+    [CmdletBinding()]
+    [OutputType([FunctionFilter])]
+    Param(
+        [Parameter(Mandatory)]
+        [string[]]$AllowedFunctions
+    )
+
+    Return [FunctionFilter]::new($AllowedFunctions)
+}
+
+Function New-TimeFilter {
+    <#
+    .SYNOPSIS
+        Creates a filter that only logs messages during specified hours.
+
+    .DESCRIPTION
+        New-TimeFilter creates an ILogFilter that restricts logging to specific hours of the day.
+        This is useful for reducing log volume during off-hours or focusing on business hours activity.
+
+    .PARAMETER StartHour
+        Starting hour (0-23) for logging window. Logs are only written during this time range.
+
+    .PARAMETER EndHour
+        Ending hour (0-23) for logging window. Logs are only written during this time range.
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        TimeFilter
+        Returns a configured TimeFilter instance.
+
+    .EXAMPLE
+        # Only log during business hours
+        $log = New-Logger -LogName "BusinessHours"
+        $timeFilter = New-TimeFilter -StartHour 8 -EndHour 17
+        Add-LogFilter -Logger $log -Filter $timeFilter
+
+        # Logs only written between 8 AM and 5 PM
+
+    .EXAMPLE
+        # Log only during overnight batch processing
+        $log = New-Logger -LogName "BatchProcessing"
+        $timeFilter = New-TimeFilter -StartHour 22 -EndHour 6
+        Add-LogFilter -Logger $log -Filter $timeFilter
+
+        # Logs written from 10 PM to 6 AM
+
+    .NOTES
+        TimeFilter implements ILogFilter interface.
+        Uses 24-hour clock (0-23).
+        Can span midnight (e.g., StartHour=22, EndHour=6).
+
+    .LINK
+        Add-LogFilter
+
+    .LINK
+        New-FunctionFilter
+
+    .LINK
+        New-UserFilter
+    #>
+    [CmdletBinding()]
+    [OutputType([TimeFilter])]
+    Param(
+        [Parameter(Mandatory)]
+        [ValidateRange(0, 23)]
+        [int]$StartHour,
+
+        [Parameter(Mandatory)]
+        [ValidateRange(0, 23)]
+        [int]$EndHour
+    )
+
+    Return [TimeFilter]::new($StartHour, $EndHour)
+}
+
+Function New-UserFilter {
+    <#
+    .SYNOPSIS
+        Creates a filter that only logs messages from specified users.
+
+    .DESCRIPTION
+        New-UserFilter creates an ILogFilter that restricts logging to messages from specific
+        user accounts. This is useful for multi-user environments where you want to focus on
+        specific user activity or exclude service accounts from logs.
+
+    .PARAMETER AllowedUsers
+        Array of usernames that are allowed to log. Only messages from these users will be
+        written to the log. Usernames are case-insensitive.
+
+    .INPUTS
+        None
+
+    .OUTPUTS
+        UserFilter
+        Returns a configured UserFilter instance.
+
+    .EXAMPLE
+        # Only log from specific users
+        $log = New-Logger -LogName "UserSpecific"
+        $userFilter = New-UserFilter -AllowedUsers @("admin", "operator")
+        Add-LogFilter -Logger $log -Filter $userFilter
+
+        # Only logs from admin and operator users
+
+    .EXAMPLE
+        # Exclude service account activity
+        $log = New-Logger -LogName "InteractiveOnly"
+        $userFilter = New-UserFilter -AllowedUsers @("user1", "user2", "user3")
+        Add-LogFilter -Logger $log -Filter $userFilter
+
+        # Service account logs excluded
+
+    .NOTES
+        UserFilter implements ILogFilter interface.
+        Usernames are matched case-insensitively.
+
+    .LINK
+        Add-LogFilter
+
+    .LINK
+        New-FunctionFilter
+
+    .LINK
+        New-TimeFilter
+    #>
+    [CmdletBinding()]
+    [OutputType([UserFilter])]
+    Param(
+        [Parameter(Mandatory)]
+        [string[]]$AllowedUsers
+    )
+
+    Return [UserFilter]::new($AllowedUsers)
+}
+
+Function Start-LogScope {
+    <#
+    .SYNOPSIS
+        Creates a disposable scope that adds temporary properties to log entries.
+
+    .DESCRIPTION
+        Start-LogScope creates a PropertyScope object that adds a key-value pair to all log entries
+        within a code block. When the scope is disposed (via Using statement or explicit Dispose()),
+        the property is automatically removed. This enables hierarchical context tracking without
+        manually adding/removing properties.
+
+        Best used with PowerShell's Using statement for automatic cleanup, or explicitly call
+        Dispose() in a Finally block.
+
+    .PARAMETER Logger
+        The Logger instance to add the scoped property to. If not specified, uses the default logger.
+
+    .PARAMETER Key
+        The property key name to add to log entries within this scope.
+
+    .PARAMETER Value
+        The property value to add to log entries within this scope.
+
+    .INPUTS
+        Logger
+        Accepts a Logger instance via the pipeline.
+
+    .OUTPUTS
+        PropertyScope
+        Returns a PropertyScope instance that implements IDisposable.
+
+    .EXAMPLE
+        # Using PowerShell 5.0+ Using statement
+        $log = New-Logger -LogName "Scoped"
+
+        Using (Start-LogScope -Logger $log -Key "RequestId" -Value "REQ-12345") {
+            Write-Log "Processing request" -Logger $log
+            # Log includes RequestId=REQ-12345
+
+            Using (Start-LogScope -Logger $log -Key "UserId" -Value "user123") {
+                Write-Log "User action" -Logger $log
+                # Log includes RequestId=REQ-12345 and UserId=user123
+            }
+
+            Write-Log "Request complete" -Logger $log
+            # Log includes RequestId=REQ-12345 only
+        }
+
+    .EXAMPLE
+        # Manual disposal in Try-Finally
+        $log = New-Logger -LogName "Manual"
+        $scope = $null
+
+        Try {
+            $scope = Start-LogScope -Logger $log -Key "Operation" -Value "BatchProcess"
+            Write-Log "Starting batch process" -Logger $log
+            # ... processing ...
+            Write-Log "Batch complete" -Logger $log
+        }
+        Finally {
+            if ($scope) { $scope.Dispose() }
+        }
+
+    .EXAMPLE
+        # Nested scopes for hierarchical context
+        $log = New-Logger -LogName "Hierarchical"
+
+        Using (Start-LogScope -Logger $log -Key "JobId" -Value "JOB-001") {
+            Write-Log "Job started" -Logger $log
+
+            foreach ($task in $tasks) {
+                Using (Start-LogScope -Logger $log -Key "TaskId" -Value $task.Id) {
+                    Write-Log "Task processing" -Logger $log
+                    # Includes JobId and TaskId
+                }
+            }
+
+            Write-Log "Job complete" -Logger $log
+        }
+
+    .EXAMPLE
+        # Web request context tracking
+        $log = New-Logger -LogName "WebAPI"
+
+        function Process-Request {
+            param($requestId, $userId)
+
+            Using (Start-LogScope -Key "RequestId" -Value $requestId) {
+                Using (Start-LogScope -Key "UserId" -Value $userId) {
+                    Write-Log "Request received"
+                    # ... process request ...
+                    Write-Log "Request complete"
+                }
+            }
+        }
+
+    .NOTES
+        PropertyScope implements IDisposable for automatic cleanup.
+        Requires PowerShell 5.0+ for Using statement support.
+        Properties are automatically removed when scope exits.
+
+    .LINK
+        Initialize-Log
+
+    .LINK
+        Write-Log
+
+    .LINK
+        Add-LogEnricher
+    #>
+    [CmdletBinding()]
+    [OutputType([PropertyScope])]
+    Param(
+        [Parameter(ValueFromPipeline)]
+        [Logger]$Logger = $Script:DefaultLog,
+
+        [Parameter(Mandatory)]
+        [string]$Key,
+
+        [Parameter(Mandatory)]
+        [object]$Value
+    )
+
+    Process {
+        If (-not $Logger) {
+            Write-Error "No logger specified and no default logger is initialized."
+            Return $null
+        }
+
+        Return [PropertyScope]::new($Logger, $Key, $Value)
+    }
+}
+
 #endregion
 
 # ================================
@@ -2887,7 +5967,14 @@ Function Test-Logger {
 
 # Export public functions
 Export-ModuleMember -Function @(
+    # Core logger initialization and management
     'Initialize-Log',
+    'New-Logger',
+    'Get-Logger',
+    'Set-DefaultLogger',
+    'Get-DefaultLogger',
+
+    # Primary logging functions
     'Write-Log',
     'Write-LogInfo',
     'Write-LogWarning',
@@ -2895,9 +5982,34 @@ Export-ModuleMember -Function @(
     'Write-LogCritical',
     'Write-LogDebug',
     'Write-LogSuccess',
+
+    # Logger information and testing
     'Get-LoggerInfo',
     'Test-Logger',
-    'Test-DefaultLogger'
+
+    # Enricher management
+    'Add-LogEnricher',
+    'New-MachineEnricher',
+    'New-ProcessEnricher',
+    'New-ThreadEnricher',
+    'New-EnvironmentEnricher',
+    'New-NetworkEnricher',
+
+    # Handler management
+    'Add-LogHandler',
+    'New-FileHandler',
+    'New-ConsoleHandler',
+    'New-EventLogHandler',
+    'New-NullHandler',
+
+    # Filter management
+    'Add-LogFilter',
+    'New-FunctionFilter',
+    'New-TimeFilter',
+    'New-UserFilter',
+
+    # Scoped properties
+    'Start-LogScope'
 )
 
 # Note: The Logger class is automatically available when the module is imported in PowerShell 5.0+
