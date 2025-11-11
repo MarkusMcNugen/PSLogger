@@ -73,13 +73,6 @@ PSLogger is a production-ready logging framework designed for complex PowerShell
 
 ## Installation
 
-### From PowerShell Gallery (when published)
-
-```powershell
-Install-Module -Name PSLogger -Scope CurrentUser
-Import-Module PSLogger
-```
-
 ### Manual Installation
 
 ```powershell
@@ -791,4 +784,5 @@ Contributions, bug reports, and feature requests are welcome! Please submit issu
 ---
 
 📚 **For detailed helper function documentation, see [HELPER_FUNCTIONS.md](HELPER_FUNCTIONS.md)**
+
 
